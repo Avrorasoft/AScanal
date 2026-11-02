@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "127754232795",
+    "firebase_url": "https://canal-9-tva-fe8dc-default-rtdb.firebaseio.com",
+    "project_id": "canal-9-tva-fe8dc",
+    "storage_bucket": "canal-9-tva-fe8dc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:127754232795:android:5527ba2caec77bec9d3dfe",
+        "android_client_info": {
+          "package_name": "com.avrorasoft.tva"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDvwdiZwYTrDAYPZvCL5Aa7o_N7At3pxhE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

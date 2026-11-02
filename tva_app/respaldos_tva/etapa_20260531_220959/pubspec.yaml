@@ -1,0 +1,62 @@
+name: tva
+description: "CANAL 9 TVA-TELEVISIÓN AMAZÓNICA-RIBERALTA"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.1.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # --- INFRAESTRUCTURA DE ARCHIVOS Y MULTIMEDIA ---
+  path_provider: ^2.1.2
+  cupertino_icons: ^1.0.6
+  visibility_detector: ^0.4.0
+  share_plus: ^7.2.1
+  video_player: ^2.8.2
+  chewie: ^1.7.5
+  gal: ^2.3.0
+
+  # --- SERVICIOS DE RED Y API ---
+  http: ^1.2.0
+  multicast_dns: ^0.3.2+4
+  url_launcher: ^6.3.0 # MOTOR PARA WHATSAPP
+
+  # --- NÚCLEO DE SEGURIDAD Y HARDWARE ---
+  permission_handler: ^11.3.0
+  device_info_plus: ^9.1.1
+  geolocator: ^10.1.0
+  crypto: ^3.0.3
+  shared_preferences: ^2.2.3
+
+  # --- INFRAESTRUCTURA FIREBASE (MODO PRODUCCIÓN) ---
+  firebase_core: ^2.24.2
+  firebase_messaging: ^14.7.9
+  firebase_database: ^10.4.0
+  firebase_auth: ^4.15.0 # AUTENTICACIÓN PARA VALIDACIÓN CIUDADANA
+  image_gallery_saver_plus: ^4.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  # MOTOR PARA GENERAR EL ÍCONO DEL ESCRITORIO
+  flutter_launcher_icons: ^0.13.1
+
+# CONFIGURACIÓN AUTOMÁTICA DEL ÍCONO DE LA APP
+flutter_icons:
+  android: true
+  ios: false
+  image_path: "assets/logo.png" # Asegúrate de que tu logo esté en esta ruta y se llame así
+  adaptive_icon_background: "#FFFFFF" # Fondo blanco para iconos adaptativos de Android
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/logo.png
+    - assets/qr.png
+    - assets/intro.mp3

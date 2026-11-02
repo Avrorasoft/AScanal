@@ -1,0 +1,2291 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:io';
+import 'dart:math' show cos, sqrt, asin, Random;
+import 'dart:async';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:cloudinary_public/cloudinary_public.dart';
+
+// ============================================================
+// CANAL 9 TVA - APLICACIÓN OFICIAL RIBERALTA
+// IDENTIDAD: tva en ROJO y CANAL 9 en VERDE (Acento)
+// ============================================================
+
+final ValueNotifier<String> globalAudioNotifier = ValueNotifier<String>('none');
+final List<dynamic> globalNoticias = []; 
+
+// Control Global de VDO para corte inmediato al desplazar o cambiar de player
+WebViewController? globalVdoController;
+bool isGlobalVdoInitialized = false;
+
+void forceKillGlobalVdo() {
+  if (globalVdoController != null) {
+    globalVdoController!.loadRequest(Uri.parse('about:blank'));
+    globalVdoController = null;
+    isGlobalVdoInitialized = false;
+    globalAudioNotifier.value = 'none';
+  }
+}
+
+class VideoRegistry {
+  static final Map<String, GlobalKey> _keys = {};
+  
+  static GlobalKey getKey(String id) {
+    _keys.putIfAbsent(id, () => GlobalKey());
+    return _keys[id]!;
+  }
+}
+
+// Lógica de georrestricción - Sistema métrico
+double _calcularDistanciaCanal9(double userLat, double userLon) {
+  double ribLat = -10.998041;
+  double ribLon = -66.064368;
+  var p = 0.017453292519943295;
+  var c = cos;
+  var a = 0.5 - 
+          c((ribLat - userLat) * p) / 2 + 
+          c(userLat * p) * c(ribLat * p) * (1 - c((ribLon - userLon) * p)) / 2;
+          
+  return 12742 * asin(sqrt(a)); // Resultado estricto en kilómetros
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp, 
+    DeviceOrientation.landscapeLeft, 
+    DeviceOrientation.landscapeRight
+  ]);
+  
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  
+  runApp(const Canal9App());
+}
+
+class Canal9App extends StatelessWidget {
+  const Canal9App({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Canal 9 TVA',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        primaryColor: Colors.red,
+        cardColor: const Color(0xFF1c1c1c),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF121212), 
+          elevation: 0,
+          shape: Border(
+            bottom: BorderSide(
+              color: Colors.red, 
+              width: 2,
+            ),
+          ),
+        ),
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: Color(0xFF121212), 
+          selectedItemColor: Color(0xFF00c853),
+          unselectedItemColor: Colors.grey,
+        ),
+      ),
+      home: const MainScreen(),
+    );
+  }
+}
+
+// ==========================================
+// PANTALLA PRINCIPAL ENRUTADORA
+// ==========================================
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
+
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  int _currentIndex = 0;
+  int _logoTaps = 0;
+
+  void _onTabTapped(int index) {
+    FocusManager.instance.primaryFocus?.unfocus(); 
+    
+    if (index != 0) {
+      forceKillGlobalVdo();
+    }
+    
+    setState(() {
+      _currentIndex = index;
+    });
+  }
+
+  void _forcePortrait() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp, 
+          DeviceOrientation.landscapeLeft, 
+          DeviceOrientation.landscapeRight
+        ]);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    
+    return PopScope(
+      canPop: !isLandscape, 
+      onPopInvokedWithResult: (didPop, result) {
+        FocusManager.instance.primaryFocus?.unfocus();
+        if (!didPop && isLandscape) {
+          _forcePortrait(); 
+        }
+      },
+      child: Scaffold(
+        appBar: isLandscape ? null : AppBar(
+          title: GestureDetector(
+            onTap: () { 
+              _logoTaps++; 
+              if (_logoTaps >= 5) { 
+                _logoTaps = 0; 
+                Navigator.push(
+                  context, 
+                  MaterialPageRoute(builder: (_) => const PanelAdminScreen())
+                ); 
+              } 
+            },
+            child: Row(
+              children: [
+                Image.asset(
+                  'assets/images/tucan-tva.png', 
+                  height: 35, 
+                  errorBuilder: (c, e, s) => const Icon(
+                    Icons.broken_image, 
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, 
+                  children: const [
+                    Text(
+                      'Canal 9 TVA', 
+                      style: TextStyle(
+                        fontSize: 20, 
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'Riberalta, Beni', 
+                      style: TextStyle(
+                        fontSize: 12, 
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(
+                Icons.search, 
+                color: Color(0xFF00c853),
+              ), 
+              onPressed: () { 
+                FocusManager.instance.primaryFocus?.unfocus(); 
+                showSearch(
+                  context: context, 
+                  delegate: NoticiaSearchDelegate(),
+                ); 
+              }
+            ),
+            IconButton(
+              icon: const Icon(
+                Icons.power_settings_new, 
+                color: Colors.redAccent, 
+                size: 30,
+              ), 
+              onPressed: () => exit(0),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: Stack(
+          children: [
+            IndexedStack(
+              index: _currentIndex, 
+              children: const [
+                HomeScreen(), 
+                AvisosScreen(), 
+                ContactoChatScreen()
+              ],
+            ),
+            if (isLandscape && globalAudioNotifier.value != 'none')
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black,
+                  child: Center(
+                    child: AspectRatio(
+                      aspectRatio: 16/9,
+                      child: globalAudioNotifier.value == 'vdo' 
+                        ? const VdoNinjaWrapper() 
+                        : ExtractableYoutubePlayer(
+                            key: VideoRegistry.getKey(globalAudioNotifier.value), 
+                            videoId: globalAudioNotifier.value,
+                          ),
+                    ),
+                  ),
+                ),
+              )
+          ],
+        ),
+        bottomNavigationBar: isLandscape ? null : BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: _onTabTapped,
+          type: BottomNavigationBarType.fixed,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home), 
+              label: 'Inicio',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.video_library), 
+              label: 'Avisos',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.headset_mic), 
+              label: 'Contacto',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// HOME SCREEN (SENSOR DE MOVIMIENTO 100PX)
+// ==========================================
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMixin {
+  final String canalAId = 'UCsFHCdqQP6zwoh8oaloiRHQ'; 
+  final String apiKey = 'AIzaSyBNrxQy0-y6GFV17i9vU2MyE89FyHRqDMY';
+  
+  List<Map<String, dynamic>> _combinedData = [];
+  bool _isLoading = true;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() { 
+    super.initState(); 
+    _refreshData(); 
+  }
+
+  Future<void> _refreshData() async {
+    List<Map<String, dynamic>> temp = [];
+    
+    // 1. Extracción de YouTube Canal A
+    try {
+      final res = await http.get(Uri.parse(
+        'https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=UU${canalAId.substring(2)}&maxResults=8&key=$apiKey'
+      ));
+      
+      if (res.statusCode == 200) {
+        final decodedData = json.decode(res.body);
+        for (var item in decodedData['items']) {
+          temp.add({
+            'tipo': 'video', 
+            'id': item['snippet']['resourceId']['videoId'], 
+            'titulo': item['snippet']['title'], 
+            'fecha': item['snippet']['publishedAt']
+          });
+        }
+      }
+    } catch (_) {}
+
+    // 2. Extracción de RSS Diversificado (60/20/10/10) con RT y Scraping
+    temp.addAll(await _fetchDeepCategory('https://eju.tv/feed/', 6)); // 60% Bolivia
+    temp.addAll(await _fetchDeepCategory('https://actualidad.rt.com/feeds/all.rss', 1)); // 10% RT Internacional
+    temp.addAll(await _fetchDeepCategory('https://www.ngenespanol.com/feed/', 2)); // 20% Curiosidades
+    temp.addAll(await _fetchDeepCategory('https://as.com/rss/futbol/primera.xml', 1)); // 10% Deportes
+
+    // Ordenamiento por fecha
+    temp.sort((a, b) => b['fecha'].toString().compareTo(a['fecha'].toString()));
+    
+    if (mounted) {
+      setState(() { 
+        _combinedData = temp; 
+        _isLoading = false; 
+      });
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchDeepCategory(String url, int limit) async {
+    List<Map<String, dynamic>> list = [];
+    
+    try {
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
+      
+      if (res.statusCode == 200) {
+        final items = RegExp(r'<item>(.*?)</item>', dotAll: true).allMatches(res.body);
+        
+        for (var m in items) {
+          if (list.length >= limit) break;
+          
+          final content = m.group(1)!;
+          
+          final titleMatch = RegExp(r'<title>(.*?)</title>').firstMatch(content);
+          final title = titleMatch?.group(1)?.replaceAll('<![CDATA[', '').replaceAll(']]>', '') ?? 'Noticia';
+          
+          final linkMatch = RegExp(r'<link>(.*?)</link>').firstMatch(content);
+          final link = linkMatch?.group(1) ?? '';
+          
+          final imgMatch = RegExp(r'url="(.*?)"').firstMatch(content);
+          final img = imgMatch?.group(1) ?? 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=600';
+          
+          String deepText = "Cargando contenido completo...";
+          
+          try {
+            final pRes = await http.get(Uri.parse(link)).timeout(const Duration(seconds: 4));
+            if (pRes.statusCode == 200) {
+              final ps = RegExp(r'<p>(.*?)</p>', dotAll: true).allMatches(pRes.body);
+              deepText = ps.map((e) => e.group(1)!
+                  .replaceAll(RegExp(r'<[^>]*>'), '')
+                  .trim())
+                  .where((s) => s.length > 50)
+                  .take(12)
+                  .join('\n\n');
+            }
+          } catch (_) {}
+
+          if (deepText.length < 100) {
+            final descMatch = RegExp(r'<description>(.*?)</description>', dotAll: true).firstMatch(content);
+            deepText = descMatch?.group(1)?.replaceAll(RegExp(r'<[^>]*>'), '').trim() ?? deepText;
+          }
+
+          String resumen = deepText.length > 130 ? '${deepText.substring(0, 130)}...' : deepText;
+
+          list.add({
+            'tipo': 'texto', 
+            'titulo': title, 
+            'cuerpo': deepText, 
+            'resumen': resumen, 
+            'foto': img, 
+            'fecha': DateTime.now().toIso8601String()
+          });
+        }
+      }
+    } catch (_) {}
+    
+    return list;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFF00c853)),
+      );
+    }
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: (ScrollNotification scroll) {
+        // ===============================================
+        // SENSOR 100PX: Apaga el audio de VDO al bajar
+        // ===============================================
+        if (scroll.metrics.pixels > 100 && globalAudioNotifier.value == 'vdo') {
+          forceKillGlobalVdo();
+        }
+        return false;
+      },
+      child: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('noticias').snapshots(),
+        builder: (context, snapshot) {
+          List<Map<String, dynamic>> fullList = List.from(_combinedData);
+          
+          if (snapshot.hasData) {
+            for (var doc in snapshot.data!.docs) {
+              final d = doc.data() as Map<String, dynamic>;
+              if (d['esVisible'] == true) {
+                fullList.add(d);
+              }
+            }
+          }
+          
+          fullList.sort((a, b) {
+             DateTime dA = a['fecha'] is Timestamp 
+                ? (a['fecha'] as Timestamp).toDate() 
+                : DateTime.tryParse(a['fecha'].toString()) ?? DateTime.now();
+                
+             DateTime dB = b['fecha'] is Timestamp 
+                ? (b['fecha'] as Timestamp).toDate() 
+                : DateTime.tryParse(b['fecha'].toString()) ?? DateTime.now();
+                
+             return dB.compareTo(dA);
+          });
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: fullList.length + 2,
+            itemBuilder: (context, index) {
+              if (index == 0) return const VdoNinjaWrapper();
+              if (index == 1) return const HomeButtons();
+              
+              final item = fullList[index - 2];
+              
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: item['tipo'] == 'video' 
+                  ? YoutubeVideoCard(
+                      title: item['titulo'], 
+                      videoId: item['id'],
+                    ) 
+                  : NoticiaTextoCard(
+                      noticia: item,
+                    ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ==========================================
+// BOTONES PRINCIPALES DE HOME
+// ==========================================
+class HomeButtons extends StatelessWidget {
+  const HomeButtons({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Row(
+        children: [
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context, 
+                  MaterialPageRoute(builder: (_) => const PantallaClimaNativo()),
+                );
+              }, 
+              icon: const Icon(Icons.wb_sunny), 
+              label: const Text('Clima'), 
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context, 
+                  MaterialPageRoute(builder: (_) => const PantallaHoroscopoNativo()),
+                );
+              }, 
+              icon: const Icon(Icons.star), 
+              label: const Text('Horóscopo'), 
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00c853),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// TARJETAS DE NOTICIAS DE VIDEO
+// ==========================================
+class YoutubeVideoCard extends StatelessWidget {
+  final String videoId;
+  final String title;
+  
+  const YoutubeVideoCard({
+    super.key, 
+    required this.videoId, 
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    bool isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    bool isActive = globalAudioNotifier.value == videoId;
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1c1c1c), 
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          if (!isLandscape || !isActive) 
+            AspectRatio(
+              aspectRatio: 16/9, 
+              child: ExtractableYoutubePlayer(
+                videoId: videoId, 
+                key: VideoRegistry.getKey(videoId),
+              ),
+            ),
+          if (!isLandscape || !isActive) 
+            Container(
+              padding: const EdgeInsets.all(12), 
+              width: double.infinity, 
+              decoration: const BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: Colors.red, 
+                    width: 2,
+                  ),
+                ),
+              ),
+              child: Text(
+                title, 
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold, 
+                  color: Colors.white,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// REPRODUCTOR DE YOUTUBE EXTRAÍBLE
+// ==========================================
+class ExtractableYoutubePlayer extends StatefulWidget {
+  final String videoId;
+  
+  const ExtractableYoutubePlayer({
+    super.key, 
+    required this.videoId,
+  });
+
+  @override
+  State<ExtractableYoutubePlayer> createState() => _ExtractableYoutubePlayerState();
+}
+
+class _ExtractableYoutubePlayerState extends State<ExtractableYoutubePlayer> {
+  YoutubePlayerController? _controller;
+  bool _isInitialized = false;
+
+  void _init() {
+    forceKillGlobalVdo(); // Silencia y mata VDO si inicias un video de YouTube
+    
+    globalAudioNotifier.value = widget.videoId;
+    
+    _controller = YoutubePlayerController(
+      initialVideoId: widget.videoId, 
+      flags: const YoutubePlayerFlags(
+        autoPlay: true, 
+        mute: false,
+      ),
+    );
+    
+    setState(() {
+      _isInitialized = true;
+    });
+  }
+
+  @override
+  void dispose() { 
+    _controller?.dispose(); 
+    super.dispose(); 
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isInitialized && _controller != null) {
+      return YoutubePlayer(controller: _controller!);
+    }
+    
+    return Stack(
+      fit: StackFit.expand, 
+      children: [
+        Image.network(
+          'https://img.youtube.com/vi/${widget.videoId}/hqdefault.jpg', 
+          fit: BoxFit.cover, 
+          errorBuilder: (c,e,s) => Container(color: Colors.grey[900]),
+        ),
+        Container(color: Colors.black45),
+        const Center(
+          child: Icon(
+            Icons.play_circle_fill, 
+            size: 60, 
+            color: Colors.red,
+          ),
+        ),
+        InkWell(onTap: _init),
+      ],
+    );
+  }
+}
+
+// ==========================================
+// TARJETAS DE TEXTO (TITULO AMARILLO PASTEL)
+// ==========================================
+class NoticiaTextoCard extends StatelessWidget {
+  final dynamic noticia;
+  
+  const NoticiaTextoCard({
+    super.key, 
+    required this.noticia,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () {
+        FocusManager.instance.primaryFocus?.unfocus();
+        globalAudioNotifier.value = 'none';
+        
+        Navigator.push(
+          context, 
+          MaterialPageRoute(
+            builder: (_) => DetalleNoticiaScreen(noticia: noticia),
+          ),
+        );
+      },
+      child: Card(
+        color: const Color(0xFF1c1c1c),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, 
+          children: [
+            Image.network(
+              noticia['foto'], 
+              height: 180, 
+              width: double.infinity, 
+              fit: BoxFit.cover, 
+              errorBuilder: (c,e,s) => Container(
+                height: 180, 
+                color: Colors.grey[800],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16), 
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start, 
+                children: [
+                  Text(
+                    noticia['titulo'], 
+                    style: const TextStyle(
+                      fontSize: 18, 
+                      fontWeight: FontWeight.bold, 
+                      color: Color(0xFFFFF59D), // Amarillo Pastel
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    noticia['resumen'] ?? '', 
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// PANTALLA DE LECTURA DE NOTICIA COMPLETA
+// ==========================================
+class DetalleNoticiaScreen extends StatelessWidget {
+  final dynamic noticia;
+  
+  const DetalleNoticiaScreen({
+    super.key, 
+    required this.noticia,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Lectura'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF00c853)),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, 
+          children: [
+            Image.network(
+              noticia['foto'], 
+              width: double.infinity, 
+              fit: BoxFit.cover, 
+              errorBuilder: (c,e,s) => const SizedBox.shrink(),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(24), 
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    noticia['titulo'], 
+                    style: const TextStyle(
+                      fontSize: 26, 
+                      fontWeight: FontWeight.bold, 
+                      color: Color(0xFFFFF59D), // Amarillo Pastel
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    noticia['cuerpo'], 
+                    style: const TextStyle(
+                      fontSize: 18, 
+                      height: 1.6,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// REPRODUCTOR VDO NINJA (SEÑAL EN VIVO)
+// ==========================================
+class VdoNinjaWrapper extends StatelessWidget {
+  const VdoNinjaWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black, 
+        borderRadius: BorderRadius.circular(12), 
+        border: Border.all(
+          color: Colors.red, 
+          width: 2,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Container(
+            color: Colors.red, 
+            padding: const EdgeInsets.all(8), 
+            child: Row(
+              children: const [
+                Icon(
+                  Icons.live_tv, 
+                  size: 18, 
+                  color: Colors.white,
+                ), 
+                SizedBox(width: 8), 
+                Text(
+                  'SEÑAL EN VIVO', 
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold, 
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const AspectRatio(
+            aspectRatio: 16/9, 
+            child: VdoPlayerCore(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class VdoPlayerCore extends StatefulWidget {
+  const VdoPlayerCore({super.key});
+
+  @override
+  State<VdoPlayerCore> createState() => _VdoPlayerCoreState();
+}
+
+class _VdoPlayerCoreState extends State<VdoPlayerCore> {
+  final String url = "https://vdo.ninja/?scene&room=canal9&password=tumichucua";
+  
+  @override
+  void initState() {
+    super.initState();
+    if (!isGlobalVdoInitialized) {
+      globalVdoController = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(Colors.black)
+        ..loadRequest(Uri.parse(url));
+        
+      isGlobalVdoInitialized = true;
+      globalAudioNotifier.value = 'vdo';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return globalVdoController != null 
+      ? WebViewWidget(controller: globalVdoController!) 
+      : Container(color: Colors.black);
+  }
+}
+// ==========================================
+// SECCIÓN AVISOS (SHORTS COMPLETOS)
+// ==========================================
+class AvisosScreen extends StatefulWidget {
+  const AvisosScreen({super.key});
+
+  @override
+  State<AvisosScreen> createState() => _AvisosScreenState();
+}
+
+class _AvisosScreenState extends State<AvisosScreen> with AutomaticKeepAliveClientMixin {
+  final String apiKeyCanalB = 'AIzaSyBNrxQy0-y6GFV17i9vU2MyE89FyHRqDMY';
+  final String canalBId = 'UCtIZyziipN5LFBcYmOYogmw'; 
+  final List<String> _shortsIds = []; 
+  bool _isLoading = true;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() { 
+    super.initState(); 
+    _fetchCanalBPlaylist(); 
+  }
+
+  Future<void> _fetchCanalBPlaylist() async {
+    try {
+      final response = await http.get(Uri.parse(
+        'https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=UU${canalBId.substring(2)}&maxResults=15&key=$apiKeyCanalB'
+      ));
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        for (var item in data['items']) {
+          final videoId = item['snippet']['resourceId']['videoId'];
+          if (videoId != null) {
+            _shortsIds.add(videoId);
+          }
+        }
+      }
+    } catch (_) {}
+    
+    if (_shortsIds.isEmpty) {
+      _shortsIds.addAll(['jNQXAC9IVRw', 'Nkqpl4OVpX0']);
+    }
+    
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    
+    return GestureDetector(
+      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+      child: Container(
+        color: Colors.black,
+        padding: const EdgeInsets.only(top: 16.0, bottom: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, 
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Container(
+                padding: const EdgeInsets.only(bottom: 8), 
+                decoration: const BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.red, 
+                      width: 2,
+                    ),
+                  ),
+                ), 
+                child: Row(
+                  children: const [
+                    Icon(
+                      Icons.video_library, 
+                      color: Colors.white, 
+                      size: 24,
+                    ), 
+                    SizedBox(width: 8), 
+                    Text(
+                      'Avisos y Saludos', 
+                      style: TextStyle(
+                        fontSize: 20, 
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: _isLoading 
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: Color(0xFF00c853),
+                    ),
+                  ) 
+                : ListView.builder(
+                    scrollDirection: Axis.horizontal, 
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0), 
+                    itemCount: _shortsIds.length,
+                    itemBuilder: (context, index) => Padding(
+                      padding: const EdgeInsets.only(right: 16.0), 
+                      child: AspectRatio(
+                        aspectRatio: 9 / 16, 
+                        child: YoutubeShortCard(
+                          videoId: _shortsIds[index],
+                        ),
+                      ),
+                    ),
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class YoutubeShortCard extends StatelessWidget {
+  final String videoId;
+  
+  const YoutubeShortCard({
+    super.key, 
+    required this.videoId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () {
+        FocusManager.instance.primaryFocus?.unfocus(); 
+        forceKillGlobalVdo(); 
+        globalAudioNotifier.value = videoId;
+        
+        Navigator.push(
+          context, 
+          PageRouteBuilder(
+            pageBuilder: (context, a1, a2) => FullScreenShortPlayer(videoId: videoId), 
+            transitionDuration: Duration.zero, 
+            reverseTransitionDuration: Duration.zero,
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF1c1c1c), 
+          borderRadius: BorderRadius.circular(12), 
+          border: Border.all(
+            color: Colors.white10,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          fit: StackFit.expand, 
+          children: [
+            Image.network(
+              'https://img.youtube.com/vi/$videoId/hqdefault.jpg', 
+              fit: BoxFit.cover, 
+              errorBuilder: (c,e,s) => Container(color: Colors.grey[900]),
+            ),
+            Container(color: Colors.black45),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(12), 
+                decoration: const BoxDecoration(
+                  color: Colors.red, 
+                  shape: BoxShape.circle,
+                ), 
+                child: const Icon(
+                  Icons.play_arrow, 
+                  color: Colors.white, 
+                  size: 32,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class FullScreenShortPlayer extends StatefulWidget {
+  final String videoId;
+  
+  const FullScreenShortPlayer({
+    super.key, 
+    required this.videoId,
+  });
+
+  @override
+  State<FullScreenShortPlayer> createState() => _FullScreenShortPlayerState();
+}
+
+class _FullScreenShortPlayerState extends State<FullScreenShortPlayer> {
+  late YoutubePlayerController _controller;
+  bool _showCover = true;
+  
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    
+    _controller = YoutubePlayerController(
+      initialVideoId: widget.videoId, 
+      flags: const YoutubePlayerFlags(
+        autoPlay: true, 
+        mute: false, 
+        loop: true, 
+        hideControls: true, 
+        forceHD: true,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    globalAudioNotifier.value = 'none';
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand, 
+        children: [
+          FittedBox(
+            fit: BoxFit.cover, 
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width, 
+              height: MediaQuery.of(context).size.height, 
+              child: YoutubePlayer(
+                controller: _controller, 
+                showVideoProgressIndicator: false, 
+                onReady: () => setState(() => _showCover = false),
+              ),
+            ),
+          ),
+          if (_showCover) 
+            Image.network(
+              'https://img.youtube.com/vi/${widget.videoId}/hqdefault.jpg', 
+              fit: BoxFit.cover, 
+              errorBuilder: (c,e,s) => Container(color: Colors.black),
+            ),
+          Positioned(
+            top: 40, 
+            left: 20, 
+            child: IconButton(
+              icon: const Icon(
+                Icons.arrow_back_ios_new, 
+                color: Colors.white, 
+                size: 32,
+              ), 
+              onPressed: () { 
+                FocusManager.instance.primaryFocus?.unfocus(); 
+                Navigator.pop(context); 
+              }, 
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.black54,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// SECCIÓN CONTACTO / PAGOS / CHAT (COMPLETO)
+// ==========================================
+class ContactoChatScreen extends StatefulWidget {
+  const ContactoChatScreen({super.key});
+
+  @override
+  State<ContactoChatScreen> createState() => _ContactoChatScreenState();
+}
+
+class _ContactoChatScreenState extends State<ContactoChatScreen> with AutomaticKeepAliveClientMixin {
+  final ScrollController _mainScrollController = ScrollController();
+  final TextEditingController _chatController = TextEditingController();
+  final FocusNode _chatFocusNode = FocusNode(); 
+  
+  final List<Map<String, String>> _memoriaConversacional = [
+    {
+      'emisor': 'miriam', 
+      'texto': 'Soy Miriam. Te proporciono información sobre el Canal 9 o datos históricos y turísticos de nuestra ciudad Riberalta.'
+    }
+  ];
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void dispose() { 
+    _chatController.dispose(); 
+    _chatFocusNode.dispose(); 
+    _mainScrollController.dispose(); 
+    super.dispose(); 
+  }
+
+  void _agregarMensaje(String emisor, String texto) {
+    setState(() { 
+      _memoriaConversacional.add({
+        'emisor': emisor, 
+        'texto': texto,
+      }); 
+      
+      while (_memoriaConversacional.length > 2) {
+        _memoriaConversacional.removeAt(0);
+      } 
+    });
+  }
+
+  void _enviarMensajeUsuario() {
+    final texto = _chatController.text.trim();
+    if (texto.isEmpty) return;
+    
+    _chatFocusNode.unfocus(); 
+    _agregarMensaje('usuario', texto); 
+    _chatController.clear(); 
+    _scrollAlFinal();
+    
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      
+      String respuesta = "Para darte la información correcta, especifica si necesitas datos de publicidad en televisión, o información sobre la ciudad de Riberalta.";
+      final lowerInput = texto.toLowerCase();
+      
+      if (lowerInput.contains("precio") || lowerInput.contains("tarifa") || lowerInput.contains("publicidad")) { 
+        respuesta = "La tarifa base para la publicidad en el Canal 9 es de 150 bolivianos."; 
+      }
+      else if (lowerInput.contains("historia") || lowerInput.contains("fundación")) { 
+        respuesta = "Riberalta fue fundada oficialmente el 3 de febrero de 1894 por el Delegado Nacional de Colonias, Lisímaco Gutiérrez."; 
+      }
+      else if (lowerInput.contains("turismo") || lowerInput.contains("lugares")) { 
+        respuesta = "Si vienes a Riberalta, es imperdible visitar Cachuela Esperanza, el hermoso lago Tumichucua y los balnearios El Prado y La Esmeralda."; 
+      }
+      
+      _agregarMensaje('miriam', respuesta); 
+      _scrollAlFinal();
+    });
+  }
+
+  void _scrollAlFinal() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_mainScrollController.hasClients) {
+        _mainScrollController.animateTo(
+          _mainScrollController.position.maxScrollExtent, 
+          duration: const Duration(milliseconds: 300), 
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _enviarArchivoATelegram(bool esMedia, bool directCamera) async {
+    try {
+      List<File> filesToUpload = [];
+      
+      if (directCamera) {
+        final picker = ImagePicker();
+        final file = esMedia 
+          ? await picker.pickVideo(source: ImageSource.camera) 
+          : await picker.pickImage(source: ImageSource.camera);
+          
+        if (file != null) {
+          filesToUpload.add(File(file.path));
+        }
+      } else {
+        FilePickerResult? result = await FilePicker.platform.pickFiles(
+          type: esMedia ? FileType.media : FileType.any, 
+          allowMultiple: true,
+        );
+        
+        if (result != null && result.files.isNotEmpty) {
+          filesToUpload.addAll(result.paths.map((path) => File(path!)));
+        }
+      }
+      
+      if (filesToUpload.isNotEmpty) {
+        for (var file in filesToUpload) {
+          final filename = file.path.split(Platform.pathSeparator).last;
+          
+          if (file.lengthSync() > 52428800) { 
+            _agregarMensaje('miriam', 'Archivo muy pesado.'); 
+            continue; 
+          }
+          
+          _agregarMensaje('usuario', '[Enviando adjunto...]'); 
+          _scrollAlFinal();
+          
+          var request = http.MultipartRequest(
+            'POST', 
+            Uri.parse('https://api.telegram.org/bot8605134111:AAFnarRLWf-2_pNs_fC7opRRVDcKl6WaLSk/sendDocument')
+          );
+          
+          request.fields['chat_id'] = '8507481549';
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'document', 
+              file.readAsBytesSync(), 
+              filename: filename,
+            )
+          );
+          
+          var response = await request.send();
+          
+          if (response.statusCode == 200) { 
+            Future.delayed(const Duration(milliseconds: 500), () { 
+              if (mounted) {
+                _agregarMensaje('miriam', 'Adjunto recibido en Canal 9.'); 
+                _scrollAlFinal(); 
+              }
+            }); 
+          }
+        }
+      }
+    } catch (e) { 
+      _agregarMensaje('miriam', 'Operación fallida.'); 
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    
+    return GestureDetector(
+      onTap: () => FocusManager.instance.primaryFocus?.unfocus(), 
+      child: SingleChildScrollView(
+        controller: _mainScrollController, 
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, 
+          children: [
+            Container(
+              padding: const EdgeInsets.only(bottom: 8), 
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.red, 
+                    width: 2,
+                  ),
+                ),
+              ), 
+              child: Row(
+                children: const [
+                  Icon(
+                    Icons.credit_card, 
+                    color: Colors.white, 
+                    size: 24,
+                  ), 
+                  SizedBox(width: 8), 
+                  Text(
+                    'Pagos y Chat', 
+                    style: TextStyle(
+                      fontSize: 20, 
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(20), 
+              decoration: BoxDecoration(
+                color: const Color(0xFF1c1c1c), 
+                borderRadius: BorderRadius.circular(12), 
+                border: Border.all(color: Colors.white10),
+              ), 
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center, 
+                    children: const [
+                      Icon(
+                        Icons.qr_code_2, 
+                        color: Color(0xFF00c853), 
+                        size: 28,
+                      ), 
+                      SizedBox(width: 8), 
+                      Text(
+                        'Pago por QR', 
+                        style: TextStyle(
+                          fontSize: 20, 
+                          fontWeight: FontWeight.bold, 
+                          color: Color(0xFF00c853),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12), 
+                  const Text(
+                    'Escanea el QR para pagar.', 
+                    textAlign: TextAlign.center, 
+                    style: TextStyle(color: Colors.white70),
+                  ), 
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(12), 
+                    decoration: BoxDecoration(
+                      color: Colors.white, 
+                      borderRadius: BorderRadius.circular(8),
+                    ), 
+                    child: Image.network(
+                      'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://canal9tva.com/pagos', 
+                      width: 150, 
+                      height: 150,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(20), 
+              decoration: BoxDecoration(
+                color: const Color(0xFF1c1c1c), 
+                borderRadius: BorderRadius.circular(12), 
+                border: Border.all(color: Colors.white10),
+              ), 
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start, 
+                children: [
+                  Row(
+                    children: const [
+                      Icon(
+                        Icons.mobile_friendly, 
+                        color: Color(0xFF00c853), 
+                        size: 28,
+                      ), 
+                      SizedBox(width: 8), 
+                      Text(
+                        'Transferencia', 
+                        style: TextStyle(
+                          fontSize: 20, 
+                          fontWeight: FontWeight.bold, 
+                          color: Color(0xFF00c853),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0), 
+                    child: Row(
+                      children: const [
+                        SizedBox(
+                          width: 80, 
+                          child: Text(
+                            'Banco:', 
+                            style: TextStyle(
+                              color: Colors.grey, 
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ), 
+                        Expanded(
+                          child: Text(
+                            'Banco Unión', 
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0), 
+                    child: Row(
+                      children: const [
+                        SizedBox(
+                          width: 80, 
+                          child: Text(
+                            'Cuenta:', 
+                            style: TextStyle(
+                              color: Colors.grey, 
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ), 
+                        Expanded(
+                          child: Text(
+                            '1000003456789', 
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0), 
+                    child: Row(
+                      children: const [
+                        SizedBox(
+                          width: 80, 
+                          child: Text(
+                            'Titular:', 
+                            style: TextStyle(
+                              color: Colors.grey, 
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ), 
+                        Expanded(
+                          child: Text(
+                            'Canal 9 TVA', 
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+            Container(
+              padding: const EdgeInsets.only(bottom: 8), 
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: Colors.red, width: 2),
+                ),
+              ), 
+              child: Row(
+                children: const [
+                  Icon(Icons.map, color: Colors.white, size: 24), 
+                  SizedBox(width: 8), 
+                  Text(
+                    'Ubicación', 
+                    style: TextStyle(
+                      fontSize: 20, 
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity, 
+              padding: const EdgeInsets.all(20), 
+              decoration: BoxDecoration(
+                color: const Color(0xFF1c1c1c), 
+                borderRadius: BorderRadius.circular(12), 
+                border: Border.all(color: Colors.white10), 
+                image: DecorationImage(
+                  image: const NetworkImage('https://images.unsplash.com/photo-1524661135-423995f22d0b?w=800'), 
+                  fit: BoxFit.cover, 
+                  colorFilter: ColorFilter.mode(
+                    Colors.black.withOpacity(0.8), 
+                    BlendMode.darken,
+                  ),
+                ),
+              ), 
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.location_on, 
+                    color: Colors.redAccent, 
+                    size: 48,
+                  ), 
+                  const SizedBox(height: 12), 
+                  const Text(
+                    'CANAL 9 TVA', 
+                    style: TextStyle(
+                      fontSize: 22, 
+                      fontWeight: FontWeight.bold, 
+                      color: Colors.white,
+                    ),
+                  ), 
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Calle Félix Sattori # 342\nFrente a Cancha San José\nRiberalta, Beni', 
+                    textAlign: TextAlign.center, 
+                    style: TextStyle(
+                      fontSize: 16, 
+                      color: Colors.white70,
+                    ),
+                  ), 
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      Uri url = Platform.isAndroid 
+                        ? Uri.parse('geo:-10.998041,-66.064368?q=-10.998041,-66.064368(Canal+9+TVA)') 
+                        : Uri.parse('http://maps.apple.com/?ll=-10.998041,-66.064368&q=Canal+9+TVA');
+                      
+                      if (!await launchUrl(url)) { 
+                        url = Uri.parse('https://www.google.com/maps/search/?api=1&query=-10.998041,-66.064368'); 
+                        launchUrl(url, mode: LaunchMode.externalApplication); 
+                      }
+                    }, 
+                    icon: const Icon(Icons.directions, color: Colors.white), 
+                    label: const Text(
+                      'Cómo llegar', 
+                      style: TextStyle(fontSize: 16),
+                    ), 
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2196F3), 
+                      foregroundColor: Colors.white, 
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), 
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+            Container(
+              padding: const EdgeInsets.only(bottom: 8), 
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: Color(0xFF2196F3), 
+                    width: 2,
+                  ),
+                ),
+              ), 
+              child: Row(
+                children: const [
+                  Icon(
+                    Icons.support_agent, 
+                    color: Colors.white, 
+                    size: 24,
+                  ), 
+                  SizedBox(width: 8), 
+                  Expanded(
+                    child: Text(
+                      'Pregunte a: Miriam', 
+                      style: TextStyle(
+                        fontSize: 20, 
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            ..._memoriaConversacional.map((msg) {
+              final isUser = msg['emisor'] == 'usuario';
+              return Align(
+                alignment: isUser ? Alignment.centerRight : Alignment.centerLeft, 
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 8), 
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), 
+                  decoration: BoxDecoration(
+                    color: isUser ? const Color(0xFFC8E6C9) : const Color(0xFFF5F5F5), 
+                    borderRadius: BorderRadius.circular(16), 
+                    border: Border.all(
+                      color: Colors.black12, 
+                      width: 0.5,
+                    ),
+                  ), 
+                  child: Text(
+                    msg['texto']!, 
+                    style: const TextStyle(color: Colors.black),
+                  ),
+                ),
+              );
+            }).toList(),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8), 
+              decoration: BoxDecoration(
+                color: const Color(0xFF1c1c1c), 
+                borderRadius: BorderRadius.circular(24), 
+                border: Border.all(color: Colors.white10),
+              ), 
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.attach_file, color: Colors.white54), 
+                    onPressed: () => _enviarArchivoATelegram(false, false),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.camera_alt, color: Colors.white54), 
+                    onPressed: () { 
+                      FocusManager.instance.primaryFocus?.unfocus(); 
+                      showModalBottomSheet(
+                        context: context, 
+                        backgroundColor: const Color(0xFF1c1c1c), 
+                        builder: (BuildContext bc) { 
+                          return SafeArea(
+                            child: Wrap(
+                              children: [
+                                ListTile(
+                                  leading: const Icon(Icons.photo_camera, color: Color(0xFF00c853)), 
+                                  title: const Text('Tomar Fotografía', style: TextStyle(color: Colors.white)), 
+                                  onTap: () { 
+                                    Navigator.pop(context); 
+                                    _enviarArchivoATelegram(false, true); 
+                                  }
+                                ), 
+                                ListTile(
+                                  leading: const Icon(Icons.videocam, color: Colors.redAccent), 
+                                  title: const Text('Grabar Video', style: TextStyle(color: Colors.white)), 
+                                  onTap: () { 
+                                    Navigator.pop(context); 
+                                    _enviarArchivoATelegram(true, true); 
+                                  }
+                                )
+                              ],
+                            ),
+                          ); 
+                        }
+                      ); 
+                    }
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _chatController, 
+                      focusNode: _chatFocusNode, 
+                      style: const TextStyle(color: Colors.white), 
+                      decoration: const InputDecoration(
+                        hintText: 'Escribe a Miriam...', 
+                        hintStyle: TextStyle(color: Colors.white54), 
+                        border: InputBorder.none, 
+                        contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                      ), 
+                      onSubmitted: (_) => _enviarMensajeUsuario(),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: _enviarMensajeUsuario, 
+                    child: Container(
+                      padding: const EdgeInsets.all(10), 
+                      margin: const EdgeInsets.only(right: 6), 
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF2196F3), 
+                        shape: BoxShape.circle,
+                      ), 
+                      child: const Icon(
+                        Icons.send, 
+                        color: Colors.white, 
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// CMS Y SECUNDARIAS (COMPLETO)
+// ==========================================
+class PanelAdminScreen extends StatefulWidget {
+  const PanelAdminScreen({super.key});
+
+  @override
+  State<PanelAdminScreen> createState() => _PanelAdminScreenState();
+}
+
+class _PanelAdminScreenState extends State<PanelAdminScreen> {
+  final TextEditingController _t = TextEditingController();
+  final TextEditingController _c = TextEditingController();
+  File? _img;
+  bool _loading = false;
+
+  Future<void> _pick() async { 
+    final p = await ImagePicker().pickImage(source: ImageSource.gallery); 
+    if (p != null) {
+      setState(() => _img = File(p.path)); 
+    }
+  }
+
+  Future<void> _save() async {
+    if (_t.text.isEmpty || _c.text.isEmpty) return;
+    
+    setState(() => _loading = true);
+    
+    String url = "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=600";
+    if (_img != null) {
+      try {
+        final res = await CloudinaryPublic('da9syyeb2', 'preset_noticias')
+            .uploadFile(CloudinaryFile.fromFile(_img!.path));
+        url = res.secureUrl;
+      } catch (_) {}
+    }
+    
+    await FirebaseFirestore.instance.collection('noticias').add({
+      'tipo': 'texto', 
+      'titulo': _t.text, 
+      'cuerpo': _c.text, 
+      'resumen': _c.text.length > 50 ? '${_c.text.substring(0, 50)}...' : _c.text,
+      'foto': url, 
+      'fecha': Timestamp.now(), 
+      'esVisible': true
+    });
+    
+    if (mounted) Navigator.pop(context);
+  }
+
+  void _confirmarBorrado(DocumentSnapshot doc) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1c1c1c),
+        title: const Text("Confirmar", style: TextStyle(color: Colors.white)),
+        content: const Text(
+          "¿Eliminar este material?", 
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), 
+            child: const Text("Cancelar"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              try { 
+                await doc.reference.delete(); 
+                if (mounted) Navigator.pop(context); 
+              } 
+              catch (e) { 
+                if (mounted) { 
+                  Navigator.pop(context); 
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Cambia 'allow delete: if true;' en Firebase"),
+                    ),
+                  ); 
+                } 
+              }
+            },
+            child: const Text("Eliminar", style: TextStyle(color: Colors.white)),
+          )
+        ],
+      )
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("CMS Canal 9 TVA")),
+      body: Padding(
+        padding: const EdgeInsets.all(16), 
+        child: Column(
+          children: [
+            TextField(
+              controller: _t, 
+              decoration: const InputDecoration(labelText: "Título"),
+            ),
+            TextField(
+              controller: _c, 
+              decoration: const InputDecoration(labelText: "Cuerpo"), 
+              maxLines: 3,
+            ),
+            ElevatedButton(
+              onPressed: _pick, 
+              child: const Text("Foto"),
+            ),
+            _loading 
+              ? const CircularProgressIndicator() 
+              : ElevatedButton(
+                  onPressed: _save, 
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00c853),
+                  ), 
+                  child: const Text("PUBLICAR"),
+                ),
+            const Divider(),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('noticias').orderBy('fecha', descending: true).snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return const SizedBox.shrink();
+                  
+                  return ListView.builder(
+                    itemCount: snapshot.data!.docs.length,
+                    itemBuilder: (context, index) {
+                      final doc = snapshot.data!.docs[index];
+                      final data = doc.data() as Map<String, dynamic>;
+                      
+                      return Card(
+                        child: ListTile(
+                          title: Text(
+                            data['titulo'] ?? 'Sin título', 
+                            maxLines: 1,
+                          ), 
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red), 
+                            onPressed: () => _confirmarBorrado(doc),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              )
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// SECCIÓN HORÓSCOPO (ÍCONOS NATIVOS BLINDADOS Y REPARADOS)
+// ==========================================
+class PantallaHoroscopoNativo extends StatelessWidget {
+  const PantallaHoroscopoNativo({super.key});
+  
+  final List<Map<String, dynamic>> signs = const [
+    {'name': 'Aries', 'icon': Icons.bolt}, 
+    {'name': 'Tauro', 'icon': Icons.terrain},
+    {'name': 'Géminis', 'icon': Icons.people}, 
+    {'name': 'Cáncer', 'icon': Icons.waves},
+    {'name': 'Leo', 'icon': Icons.wb_sunny}, 
+    {'name': 'Virgo', 'icon': Icons.spa},
+    {'name': 'Libra', 'icon': Icons.balance}, 
+    {'name': 'Escorpio', 'icon': Icons.opacity},
+    {'name': 'Sagitario', 'icon': Icons.explore}, 
+    {'name': 'Capricornio', 'icon': Icons.foundation},
+    {'name': 'Acuario', 'icon': Icons.air}, 
+    {'name': 'Piscis', 'icon': Icons.scuba_diving}
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Horóscopo')),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3, 
+          crossAxisSpacing: 10, 
+          mainAxisSpacing: 10,
+        ),
+        itemCount: signs.length,
+        itemBuilder: (context, i) => InkWell(
+          onTap: () => Navigator.push(
+            context, 
+            MaterialPageRoute(
+              builder: (_) => PantallaDetalleSigno(signoData: signs[i]),
+            ),
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF1c1c1c), 
+              borderRadius: BorderRadius.circular(12), 
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center, 
+              children: [
+                Icon(
+                  signs[i]['icon'] as IconData, 
+                  size: 40, 
+                  color: const Color(0xFF00c853),
+                ), 
+                const SizedBox(height: 8), 
+                Text(
+                  signs[i]['name'] as String, 
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class PantallaDetalleSigno extends StatelessWidget {
+  final Map<String, dynamic> signoData;
+  const PantallaDetalleSigno({super.key, required this.signoData});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = signoData['name'] as String;
+    // Casteo estricto para evitar el error num vs int
+    final rand = Random(DateTime.now().day + name.codeUnitAt(0));
+    
+    final list = [
+      "Hoy es un día excelente para tomar decisiones importantes.", 
+      "Cuidado con los gastos innecesarios, mantén el enfoque.", 
+      "El amor y las relaciones personales toman protagonismo hoy.", 
+      "Tu creatividad estará por las nubes, aprovecha este momento."
+    ];
+    
+    return Scaffold(
+      appBar: AppBar(title: Text(name.toUpperCase())),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(30), 
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center, 
+            children: [
+              Icon(
+                signoData['icon'] as IconData, 
+                size: 100, 
+                color: const Color(0xFF00c853),
+              ),
+              const SizedBox(height: 30),
+              Text(
+                list[rand.nextInt(list.length)], 
+                style: const TextStyle(fontSize: 22, height: 1.5), 
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// SECCIÓN CLIMA (SISTEMA MÉTRICO)
+// ==========================================
+class PantallaClimaNativo extends StatefulWidget {
+  const PantallaClimaNativo({super.key});
+  @override
+  State<PantallaClimaNativo> createState() => _PantallaClimaNativoState();
+}
+
+class _PantallaClimaNativoState extends State<PantallaClimaNativo> {
+  bool _isLoading = true;
+  String _temp = '', _desc = '';
+  IconData _icon = Icons.cloud;
+  List<dynamic> _forecast = [], _hourly = [];
+
+  @override
+  void initState() { 
+    super.initState(); 
+    _fetchClimaRiberalta(); 
+  }
+
+  Future<void> _fetchClimaRiberalta() async {
+    try {
+      final response = await http.get(Uri.parse(
+        'https://api.open-meteo.com/v1/forecast?latitude=-10.9980&longitude=-66.0643&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min&hourly=temperature_2m,weathercode&timezone=America/La_Paz'
+      ));
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        List<dynamic> forecastList = [];
+        
+        for (int i = 0; i < data['daily']['time'].length; i++) {
+          forecastList.add({
+            'date': data['daily']['time'][i], 
+            'code': data['daily']['weathercode'][i], 
+            'max': data['daily']['temperature_2m_max'][i], 
+            'min': data['daily']['temperature_2m_min'][i]
+          });
+        }
+        
+        List<dynamic> hourlyList = [];
+        for (int i = 0; i < data['hourly']['time'].length; i++) {
+          hourlyList.add({
+            'time': data['hourly']['time'][i], 
+            'temp': data['hourly']['temperature_2m'][i], 
+            'code': data['hourly']['weathercode'][i]
+          });
+        }
+        
+        if (mounted) {
+          setState(() { 
+            _temp = '${data['current_weather']['temperature']}°'; 
+            _desc = _getWeatherDesc(data['current_weather']['weathercode']); 
+            _icon = _getWeatherIcon(data['current_weather']['weathercode']); 
+            _forecast = forecastList; 
+            _hourly = hourlyList; 
+            _isLoading = false; 
+          });
+        }
+      } else {
+        if (mounted) setState(() { _desc = 'Error'; _isLoading = false; });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _desc = 'Error'; _isLoading = false; });
+    }
+  }
+
+  String _getWeatherDesc(int code) {
+    if (code == 0) return 'Cielo Despejado'; 
+    if (code <= 3) return 'Nublado'; 
+    if (code <= 67) return 'Lluvia'; 
+    if (code <= 82) return 'Chubascos'; 
+    return 'Tormenta';
+  }
+
+  IconData _getWeatherIcon(int code) {
+    if (code == 0) return Icons.wb_sunny; 
+    if (code <= 3) return Icons.cloud_queue; 
+    if (code <= 67) return Icons.water_drop; 
+    if (code <= 82) return Icons.umbrella; 
+    return Icons.flash_on;
+  }
+
+  String _getDayName(String d, int index) {
+    if (index == 0) return 'Hoy'; 
+    if (index == 1) return 'Mañana';
+    
+    switch (DateTime.parse(d).weekday) { 
+      case 1: return 'Lunes'; 
+      case 2: return 'Martes'; 
+      case 3: return 'Miércoles'; 
+      case 4: return 'Jueves'; 
+      case 5: return 'Viernes'; 
+      case 6: return 'Sábado'; 
+      case 7: return 'Domingo'; 
+      default: return ''; 
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Pronóstico Riberalta'), 
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF00c853)), 
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator(color: Color(0xFF00c853))) 
+        : Stack(
+            clipBehavior: Clip.hardEdge, 
+            children: [
+              Positioned(
+                bottom: 10, 
+                left: 0, 
+                right: 0, 
+                child: Column(
+                  mainAxisSize: MainAxisSize.min, 
+                  children: [
+                    const Text(
+                      'ESTADO ACTUAL', 
+                      style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 11),
+                    ), 
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center, 
+                      children: [
+                        Icon(_icon, size: 40, color: const Color(0xFF00c853)), 
+                        const SizedBox(width: 8), 
+                        Text(_temp, style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.white))
+                      ],
+                    ), 
+                    Text(_desc, style: const TextStyle(fontSize: 14, color: Colors.white70))
+                  ],
+                ),
+              ),
+              Positioned(
+                top: 10, 
+                left: 12, 
+                right: 12, 
+                child: Container(
+                  padding: const EdgeInsets.only(top: 8, left: 8, right: 8, bottom: 4), 
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1c1c1c).withValues(alpha: 0.98), 
+                    borderRadius: BorderRadius.circular(16), 
+                    border: Border.all(color: Colors.white10),
+                  ), 
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min, 
+                    crossAxisAlignment: CrossAxisAlignment.start, 
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 2, left: 8), 
+                        child: Text(
+                          'PRÓXIMOS DÍAS', 
+                          style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 10),
+                        ),
+                      ), 
+                      ListView.builder(
+                        shrinkWrap: true, 
+                        physics: const NeverScrollableScrollPhysics(), 
+                        itemCount: _forecast.length, 
+                        itemBuilder: (context, index) { 
+                          final day = _forecast[index]; 
+                          final dayHourly = _hourly.where((h) => h['time'].toString().startsWith(day['date'])).toList(); 
+                          
+                          return Theme(
+                            data: Theme.of(context).copyWith(dividerColor: Colors.transparent), 
+                            child: ExpansionTile(
+                              dense: true, 
+                              iconColor: const Color(0xFF00c853), 
+                              title: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+                                children: [
+                                  SizedBox(
+                                    width: 80, 
+                                    child: Text(
+                                      _getDayName(day['date'], index), 
+                                      style: TextStyle(
+                                        fontSize: 15, 
+                                        color: index == 0 ? const Color(0xFF00c853) : Colors.white,
+                                      ),
+                                    ),
+                                  ), 
+                                  Icon(_getWeatherIcon(day['code']), color: Colors.white70, size: 20), 
+                                  Text(
+                                    '${day['min']}° / ${day['max']}°', 
+                                    style: const TextStyle(fontSize: 15, color: Colors.white),
+                                  ),
+                                ],
+                              ), 
+                              children: [
+                                Container(
+                                  height: 80, 
+                                  padding: const EdgeInsets.symmetric(vertical: 4), 
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF2a2a2a), 
+                                    borderRadius: BorderRadius.circular(10),
+                                  ), 
+                                  child: ListView.builder(
+                                    scrollDirection: Axis.horizontal, 
+                                    itemCount: dayHourly.length, 
+                                    itemBuilder: (context, hIndex) { 
+                                      final hData = dayHourly[hIndex]; 
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12), 
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center, 
+                                          children: [
+                                            Text(
+                                              hData['time'].toString().substring(11, 16), 
+                                              style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                            ), 
+                                            const SizedBox(height: 4), 
+                                            Icon(_getWeatherIcon(hData['code']), color: const Color(0xFF00c853), size: 18), 
+                                            const SizedBox(height: 4), 
+                                            Text(
+                                              '${hData['temp']}°', 
+                                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                            ),
+                                          ],
+                                        ),
+                                      ); 
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ); 
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+    );
+  }
+}
+
+class NoticiaSearchDelegate extends SearchDelegate {
+  @override
+  List<Widget>? buildActions(BuildContext context) => [
+    IconButton(
+      icon: const Icon(Icons.clear), 
+      onPressed: () => query = '',
+    )
+  ];
+  
+  @override
+  Widget? buildLeading(BuildContext context) => IconButton(
+    icon: const Icon(Icons.arrow_back), 
+    onPressed: () => close(context, null),
+  );
+  
+  @override
+  Widget buildResults(BuildContext context) => Container();
+  
+  @override
+  Widget buildSuggestions(BuildContext context) => Container();
+}
+
+extension StringExtension on String {
+  String capitalize() => this.isEmpty ? "" : "${this[0].toUpperCase()}${this.substring(1)}";
+}

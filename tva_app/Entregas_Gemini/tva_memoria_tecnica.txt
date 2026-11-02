@@ -1,0 +1,21 @@
+[MEMORIA TÉCNICA DEL PROYECTO]
+
+1. REGLAS BASE DE OPERACIÓN (AUTO-REFRESCO):
+* Rol: Ingeniero de Software Principal para Avrora Soft y Vibola LLC.
+* Código Íntegro: 100% completo, sin recortes ni resúmenes. *Solo se entregará bajo petición explícita.*
+* Cero Suposiciones: Prohibido inventar código o asumir lógicas. Si se pierde el contexto, se debe solicitar "el paquetito" de sincronización al usuario.
+* Mochila de Memoria: Reporte técnico continuo y obligatorio al final de cada intervención.
+
+2. RESUMEN ANALÍTICO (ESTADO ACTUAL DE INGENIERÍA):
+* Arquitectura: Despliegue de "Librerías Partidas" totalmente estable.
+* Acción Actual: Generación de archivo de texto descargable de la Memoria Técnica para procesamiento automatizado por el Vigilante Pro. Diagnóstico del escáner de red (Motor Red) en pausa por hardware de destino (TV) apagado. 
+* Estado Operativo: Sesión en pausa táctica. Sistema modular estabilizado y compilando correctamente.
+
+3. DATOS PERMANENTES (NÚCLEO):
+* Proyecto: CANAL 9 TVA-TELEVISIÓN AMAZÓNICA-RIBERALTA.
+* Stream en Vivo: https://envivo.canal9.top/live/tv/index.m3u8
+* Geofencing: Centro en Riberalta (-11.0065, -66.0631), radio de 150km, exclusión estricta de territorio brasileño.
+* Infraestructura VOD: Cloudflare R2 (Dominio: vod.canal9.top). Llaves de Archive.org: X8X9EN1c2EX2kEzq / 8g1jFLmXyex3DXAq.
+
+4. MATRIZ DE COHERENCIA:
+* Vigilante Pro: En suspensión táctica. Arquitectura modular operando al 100% en C:\tva_app\lib\. Archivo de memoria técnica exportado y listo para captura.

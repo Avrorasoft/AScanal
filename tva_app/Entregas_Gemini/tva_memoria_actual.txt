@@ -1,0 +1,23 @@
+[MEMORIA TÉCNICA DEL PROYECTO]
+
+1. REGLAS BASE DE OPERACIÓN:
+* Código Íntegro: 100% de la primera a la última línea. SINCRONIZADO.
+* Cero Suposiciones: Se ha reconstruido el "Gigante" tras la sincronización de bloques del usuario.
+* Mochila de Memoria: Reporte de integridad consolidado.
+
+2. RESUMEN ANALÍTICO (SANEO Y FUSIÓN MAESTRA):
+* Estado del Código: Generado tva_main_MASTER_SINCRONIZADO.dart. 
+* Módulos Activos y Verificados:
+  - Ingesta: Sistema de subida (FilePicker + POST) restaurado.
+  - Casting: Motor SSDP corregido y comando Play DLNA activo.
+  - Handshake: Handshake SSDP usa sintaxis de triple comilla para estabilidad de red.
+  - Lifecycle: Reenganche HLS al volver de detalle activo.
+  - UI: Reacciones, Comentarios y Redes Sociales integrados al 100%.
+
+3. DATOS PERMANENTES (NÚCLEO):
+* Proyecto: CANAL 9 TVA
+* Stream: https://envivo.canal9.top/live/tv/index.m3u8
+* Archive.org: Key: X8X9EN1c2EX2kEzq / Secret: 8g1jFLmXyex3DXAq
+
+4. MATRIZ DE COHERENCIA:
+* Vigilante Pro: Procesará tva_main_MASTER_SINCRONIZADO.dart en EDICION-GRANDE.

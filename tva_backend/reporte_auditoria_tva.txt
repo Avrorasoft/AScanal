@@ -1,0 +1,95 @@
+=== REPORTE DE AUDITORIA TECNICA: TVA_BACKEND ===
+Fecha de generacion: 10/31/2026 13:28:35
+---------------------------------------------------
+--- 1. ESTRUCTURA DE CARPETAS PRINCIPALES ---
+
+FullName
+--------
+C:\Canal9\tva_backend\entrada_cronicas
+C:\Canal9\tva_backend\miniaturas
+C:\Canal9\tva_backend\temp_upload
+C:\Canal9\tva_backend\.env
+C:\Canal9\tva_backend\cloudflared.exe
+C:\Canal9\tva_backend\config.yml
+C:\Canal9\tva_backend\diagnostico_tva.py
+C:\Canal9\tva_backend\ffmpeg-9.0.2-essentials_build.zip
+C:\Canal9\tva_backend\firebase_admin.json
+C:\Canal9\tva_backend\NDI 6 Tools.exe
+C:\Canal9\tva_backend\noticias.json
+C:\Canal9\tva_backend\nuevo1.txt
+C:\Canal9\tva_backend\probar_ia.py
+C:\Canal9\tva_backend\prueba.mp4
+C:\Canal9\tva_backend\reporte_auditoria_tva.txt
+C:\Canal9\tva_backend\tva_admin.py
+C:\Canal9\tva_backend\tva_adminrr.py
+C:\Canal9\tva_backend\tva_redactor.py
+C:\Canal9\tva_backend\miniaturas\alcaldeposesion.jpg
+C:\Canal9\tva_backend\miniaturas\bayoletfinal.jpg
+C:\Canal9\tva_backend\miniaturas\casa_royo_2022octubre.jpg
+C:\Canal9\tva_backend\miniaturas\cncejales_municipales.jpg
+C:\Canal9\tva_backend\miniaturas\daret.jpg
+C:\Canal9\tva_backend\miniaturas\disparos_trump.jpg
+C:\Canal9\tva_backend\miniaturas\emision_169___916_conflicto_social_en_la__132629.jpg
+C:\Canal9\tva_backend\miniaturas\emision_bloqueos_en_bolivia_5000_camiones_varad_184934.jpg
+C:\Canal9\tva_backend\miniaturas\enlace_canal9.jpg
+C:\Canal9\tva_backend\miniaturas\entrada.jpg
+C:\Canal9\tva_backend\miniaturas\juramento.jpg
+C:\Canal9\tva_backend\miniaturas\madererafinal.jpg
+C:\Canal9\tva_backend\miniaturas\mi_castigo.jpg
+C:\Canal9\tva_backend\miniaturas\micastigo.jpg
+C:\Canal9\tva_backend\miniaturas\natitas.jpg
+C:\Canal9\tva_backend\miniaturas\noticia1.jpg
+C:\Canal9\tva_backend\miniaturas\nuevo_alcalde.jpg
+C:\Canal9\tva_backend\miniaturas\prueba_riberalta.jpg
+C:\Canal9\tva_backend\miniaturas\rosa.jpg
+C:\Canal9\tva_backend\miniaturas\siringalito.jpg
+C:\Canal9\tva_backend\miniaturas\unab4.jpg
+C:\Canal9\tva_backend\miniaturas\unabfinal.jpg
+
+
+---------------------------------------------------
+--- 3. BUSQUEDA DE REFERENCIAS HLS / STREAM (.m3u8) ---
+
+Path                                      LineNumber Line
+----                                      ---------- ----
+C:\Canal9\tva_backend\firebase_admin.json          8   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+C:\Canal9\tva_backend\firebase_admin.json          9   "token_uri": "https://oauth2.googleapis.com/token",
+C:\Canal9\tva_backend\firebase_admin.json         10   "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+C:\Canal9\tva_backend\firebase_admin.json         11   "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk…
+C:\Canal9\tva_backend\noticias.json               12             "imagen": "https://vod.canal9.top/tva_img_cap_20260608132746.jpg",
+C:\Canal9\tva_backend\noticias.json               13             "videoUrl": "https://vod.canal9.top/tva_vid_20260608132746.mp4",
+C:\Canal9\tva_backend\noticias.json               24             "audioUrl": "https://vod.canal9.top/tva_aud_gen_20260606195922.mp3",
+C:\Canal9\tva_backend\noticias.json               26                 "https://vod.canal9.top/tva_gal_edit_20260606200924_0.webp",
+C:\Canal9\tva_backend\noticias.json               27                 "https://vod.canal9.top/tva_gal_edit_20260606200924_1.webp",
+C:\Canal9\tva_backend\noticias.json               28                 "https://vod.canal9.top/tva_gal_edit_20260606200924_2.webp"
+C:\Canal9\tva_backend\noticias.json               30             "imagen": "https://vod.canal9.top/tva_gal_edit_20260606200924_0.webp",
+C:\Canal9\tva_backend\noticias.json               41             "imagen": "https://vod.canal9.top/tva_img_cap_20260606161439.jpg",
+C:\Canal9\tva_backend\noticias.json               42             "videoUrl": "https://vod.canal9.top/tva_vid_20260606161439.mp4",
+C:\Canal9\tva_backend\noticias.json               52             "imagen": "https://vod.canal9.top/miniaturas/emision_169___916_conflicto_social_en…
+C:\Canal9\tva_backend\noticias.json               53             "videoUrl": "https://vod.canal9.top/emision_169___916_conflicto_social_en_la__1326…
+C:\Canal9\tva_backend\noticias.json               62             "imagen": "https://vod.canal9.top/miniaturas/emision_bloqueos_en_bolivia_5000_cami…
+C:\Canal9\tva_backend\noticias.json               63             "videoUrl": "https://vod.canal9.top/emision_bloqueos_en_bolivia_5000_camiones_vara…
+C:\Canal9\tva_backend\noticias.json               71             "imagen": "https://vod.canal9.top/miniaturas/alcaldeposesion.jpg",
+C:\Canal9\tva_backend\noticias.json               72             "videoUrl": "https://vod.canal9.top/alcaldeposesion.mp4",
+C:\Canal9\tva_backend\noticias.json               80             "imagen": "https://vod.canal9.top/miniaturas/siringalito.jpg",
+C:\Canal9\tva_backend\noticias.json               81             "videoUrl": "https://vod.canal9.top/siringalito.mp4",
+C:\Canal9\tva_backend\noticias.json               89             "imagen": "https://vod.canal9.top/miniaturas/bayoletfinal.jpg",
+C:\Canal9\tva_backend\noticias.json               90             "videoUrl": "https://vod.canal9.top/bayoletfinal.mp4",
+C:\Canal9\tva_backend\noticias.json               98             "imagen": "https://vod.canal9.top/miniaturas/disparos_trump.jpg",
+C:\Canal9\tva_backend\noticias.json               99             "videoUrl": "https://vod.canal9.top/disparos_trump.mp4",
+C:\Canal9\tva_backend\noticias.json              107             "imagen": "https://vod.canal9.top/miniaturas/casa_royo_2022octubre.jpg",
+C:\Canal9\tva_backend\noticias.json              108             "videoUrl": "https://vod.canal9.top/casa_royo_2022octubre.mp4",
+C:\Canal9\tva_backend\noticias.json              116             "imagen": "https://vod.canal9.top/miniaturas/juramento.jpg",
+C:\Canal9\tva_backend\noticias.json              117             "videoUrl": "https://vod.canal9.top/juramento.mp4",
+C:\Canal9\tva_backend\noticias.json              126             "imagen": "https://vod.canal9.top/miniaturas/unabfinal.jpg",
+C:\Canal9\tva_backend\noticias.json              127             "videoUrl": "https://vod.canal9.top/unabfinal.mp4",
+C:\Canal9\tva_backend\noticias.json              136             "imagen": "https://vod.canal9.top/miniaturas/micastigo.jpg",
+C:\Canal9\tva_backend\noticias.json              137             "videoUrl": "https://vod.canal9.top/micastigo.mp4",
+C:\Canal9\tva_backend\noticias.json              146             "imagen": "https://vod.canal9.top/miniaturas/prueba_riberalta.jpg",
+C:\Canal9\tva_backend\noticias.json              147             "videoUrl": "https://vod.canal9.top/prueba_riberalta.mp4",
+C:\Canal9\tva_backend\noticias.json              156             "imagen": "https://vod.canal9.top/miniaturas/nuevo_alcalde.jpg",
+C:\Canal9\tva_backend\noticias.json              157             "videoUrl": "https://vod.canal9.top/nuevo_alcalde.mp4",
+C:\Canal9\tva_backend\noticias.json              166             "imagen": "https://vod.canal9.top/miniaturas/cncejales_municipales.jpg",
+C:\Canal9\tva_backend\noticias.json              167             "videoUrl": "https://vod.canal9.top/cncejales_municipales.mp4",
+
+

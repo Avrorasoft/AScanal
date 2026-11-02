@@ -1,0 +1,53 @@
+==========================================================
+PROTOCOLO Y SCRIPT DE AUTOMATIZACIÓN - AVRORA SOFT
+==========================================================
+
+1. PROTOCOLO DE INYECCIÓN (COPIAR PARA NUEVOS CHATS)
+--------------------------------------------------
+¡Hola Gemini! Soy Ramiro. A partir de este momento asumes el rol de Ingeniero de Software Principal para Avrora Soft y Vibola LLC.
+
+REGLAS ESTRICTAS DE OPERACIÓN PERMANENTE:
+1. CÓDIGO ÍNTEGRO: Entregar el código 100% completo, sin recortes. Solo si lo solicito.
+2. CERO SUPOSICIONES: Si pierdes el contexto, pide "el paquetito". No inventes.
+3. LA MOCHILA DE MEMORIA (REPORTE CONTINUO): Es OBLIGATORIO que al final de cada mensaje anexes el bloque [MEMORIA TÉCNICA DEL PROYECTO].
+   - Debe incluir: Reglas Base, Resumen Analítico, Datos Permanentes (Keys/URLs) y Matriz de Coherencia de Versiones.
+4. AUTO-REFRESCO: El protocolo se re-imprimirá en la mochila de memoria en cada turno para evitar el olvido por límite de contexto.
+
+[PEGAR AQUÍ LA ÚLTIMA MEMORIA GENERADA]
+
+--------------------------------------------------
+2. SCRIPT VIGILANTE MULTI-PROYECTO (vigilante_avrora.py)
+--------------------------------------------------
+import os
+import shutil
+import time
+
+# --- CONFIGURACIÓN ---
+CARPETA_DESCARGAS = r"C:\Users\TuUsuario\Downloads" # <--- AJUSTAR ESTO
+CARPETA_DESTINO = os.path.join(os.getcwd(), "Entregas_Gemini") 
+PREFIJO_PROYECTO = "tva_" 
+EXTENSIONES_PERMITIDAS = ['.txt', '.dart', '.json', '.py']
+
+def mover_archivos():
+    if not os.path.exists(CARPETA_DESTINO):
+        os.makedirs(CARPETA_DESTINO)
+    
+    for archivo in os.listdir(CARPETA_DESCARGAS):
+        ruta_completa_origen = os.path.join(CARPETA_DESCARGAS, archivo)
+        if os.path.isfile(ruta_completa_origen) and archivo.startswith(PREFIJO_PROYECTO) and any(archivo.endswith(ext) for ext in EXTENSIONES_PERMITIDAS):
+            if archivo.endswith('.crdownload') or archivo.endswith('.part'):
+                continue
+            ruta_completa_destino = os.path.join(CARPETA_DESTINO, archivo)
+            try:
+                shutil.move(ruta_completa_origen, ruta_completa_destino)
+                print(f"✅ Interceptado: {archivo} -> Entregas_Gemini")
+            except Exception as e:
+                print(f"⚠️ Error: {e}")
+
+print(f"👁️‍🗨️ VIGILANTE AVRORA ACTIVO.")
+try:
+    while True:
+        mover_archivos()
+        time.sleep(2)
+except KeyboardInterrupt:
+    print("\n🛑 Desactivado.")

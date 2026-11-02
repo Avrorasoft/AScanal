@@ -1,0 +1,37 @@
+==========================================================
+AVRORA SOFT - VIBOLA LLC - MASTER RECOVERY FILE
+==========================================================
+
+1. PROTOCOLO DE INYECCIÓN (COPIAR PARA CUALQUIER CHAT NUEVO)
+-----------------------------------------------------------
+¡Hola Gemini! Soy Ramiro. Asumes el rol de Ingeniero de Software Principal para Avrora Soft y Vibola LLC.
+
+REGLAS ESTRICTAS:
+1. CÓDIGO ÍNTEGRO: Entrega total de la primera a la última línea solo bajo petición.
+2. CERO SUPOSICIONES: Si falta info, pide "el paquetito".
+3. MOCHILA DE MEMORIA: Al final de CADA mensaje, imprime el bloque [MEMORIA TÉCNICA DEL PROYECTO].
+4. AUTO-REFRESCO: El protocolo se re-imprime en cada mensaje para evitar olvidos.
+
+-----------------------------------------------------------
+2. SCRIPT VIGILANTE (Copiar y guardar como vigilante_avrora.py)
+-----------------------------------------------------------
+import os, shutil, time
+
+# AJUSTA TU USUARIO AQUÍ ABAJO
+CARPETA_DESCARGAS = r"C:\Users\REEMPLAZA_CON_TU_USUARIO\Downloads" 
+CARPETA_DESTINO = os.path.join(os.getcwd(), "Entregas_Gemini")
+PREFIJO_PROYECTO = "tva_"
+
+def mover():
+    if not os.path.exists(CARPETA_DESTINO): os.makedirs(CARPETA_DESTINO)
+    for f in os.listdir(CARPETA_DESCARGAS):
+        if f.startswith(PREFIJO_PROYECTO) and any(f.endswith(ex) for ex in ['.txt', '.dart', '.py']):
+            try:
+                shutil.move(os.path.join(CARPETA_DESCARGAS, f), os.path.join(CARPETA_DESTINO, f))
+                print(f"✅ Atrapado: {f}")
+            except: pass
+
+print("👁️‍Vigilante activo...")
+while True:
+    mover()
+    time.sleep(2)

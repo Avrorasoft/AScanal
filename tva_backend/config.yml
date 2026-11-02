@@ -1,0 +1,9 @@
+tunnel: 7bd5bbc0-c8b2-4ca8-a155-451b1a3e1870
+credentials-file: C:\Users\EDICION-GRANDE\.cloudflared\7bd5bbc0-c8b2-4ca8-a155-451b1a3e1870.json
+
+ingress:
+  - hostname: admin.canal9.top
+    service: http://localhost:5000
+  - hostname: politica.canal9.top
+    service: http://localhost:5000
+  - service: http_status:404

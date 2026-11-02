@@ -1,0 +1,8 @@
+=== REPORTE DEL PROYECTO CANAL 9 (TVA) ===
+Ruta: C:\Canal9
+Fecha: 10/30/2026 12:11:54
+
+=== ESTRUCTURA DE LA CARPETA LIB ===
+No se encontró la carpeta lib.
+
+

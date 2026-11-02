@@ -1,0 +1,35 @@
+[MEMORIA TÉCNICA DE CLONACIÓN INTEGRAL - AVRORA SOFT]
+PROYECTO: CANAL 9 TVA-TELEVISIÓN AMAZÓNICA-RIBERALTA
+
+1. REGLAS BASE DE OPERACIÓN (PROTOCOLO RAMIRO):
+* Código Íntegro: Entrega 100% completa de la primera a la última línea bajo petición.
+* Cero Suposiciones: Si falta contexto, pedir "el paquetito".
+* Mochila de Memoria: Reporte obligatorio y descargable en cada turno con ADN de clonación.
+* Auto-relectura: Protocolo integrado para evitar decaimiento de contexto.
+
+2. ADN DEL PROYECTO (PARA CLONACIÓN):
+A. DATOS DE NÚCLEO:
+   - Stream HLS: https://envivo.canal9.top/live/tv/index.m3u8
+   - Archive.org: Key: X8X9EN1c2EX2kEzq / Secret: 8g1jFLmXyex3DXAq
+   - Geofencing: Centro Riberalta (-11.0065, -66.0631), Radio 150km, Exclusión Brasil (Lon > -65.35 && Lat > -11.0).
+
+B. DEPENDENCIAS (pubspec.yaml):
+   - flutter_localizations: sdk: flutter
+   - video_player: ^2.8.1
+   - geolocator: ^10.1.0
+   - file_picker: 11.0.2 (ESTRICTO)
+   - http: ^1.1.0
+   - multicast_dns: ^0.3.2+3
+
+C. PERMISOS CRÍTICOS (AndroidManifest.xml):
+   - Internet, Access_Network_State, Access_Fine_Location, Access_Coarse_Location, Change_Wifi_Multicast_State.
+
+3. RESUMEN ANALÍTICO (Últimos movimientos):
+* Cierre de Sesión: Preparación para prueba de clonación en chat nuevo.
+* Validación: El sistema de archivos local y el ADN técnico están sincronizados.
+* Protocolo: El usuario tiene el archivo maestro para la reinyección de contexto.
+
+4. MATRIZ DE COHERENCIA (Librerías):
+* FilePicker: v11.0.2 (Sintaxis: pickFiles()).
+* VideoPlayer: networkUrl(Uri.parse(url)).
+* Script Local: Prefijo 'tva_' activo en PC 'EDICION-GRANDE'.

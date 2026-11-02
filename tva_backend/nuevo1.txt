@@ -1,0 +1,2193 @@
+# =======================================================
+# --- ASvideo.py - VERSIÓN 1.5 MASTER (NLE SUPREME) ---
+# --- Creado por: Avrora Soft - Vibola LLC - 2026 ---
+# =======================================================
+import os
+import sys
+import json
+import requests
+import threading
+import subprocess
+import re
+import time
+import shutil
+import math
+import textwrap
+import traceback
+import gc
+from datetime import datetime
+import tkinter as tk
+from tkinter import messagebox, filedialog, scrolledtext, ttk
+from PIL import Image, ImageTk, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+import numpy as np
+
+# -------------------------------------------------------
+# --- FASE 1: MÓDULO DE SEGURIDAD ---
+# -------------------------------------------------------
+ARCHIVO_LICENCIA_LOCAL = "license.av"
+
+def verificar_integridad_y_licencia_instalacion():
+    if not getattr(sys, 'frozen', False):
+        print("💡 Modo Desarrollo detectado. Omitiendo chequeo de licencia local.")
+        return True
+    
+    ruta_ejecucion = os.path.dirname(sys.executable)
+    ruta_licencia = os.path.join(ruta_ejecucion, ARCHIVO_LICENCIA_LOCAL)
+    
+    if not os.path.exists(ruta_licencia):
+        messagebox.showerror(
+            "Error de Activación - ASvideo Suite V1.5", 
+            "ASvideo Suite no se ha instalado correctamente o no se ha activado.\n\n"
+            "⚠️ No se encontró la marca de activación válida (license.av).\n\n"
+            "Por favor, contacta al soporte técnico de AVRORA SOFT."
+        )
+        sys.exit()
+    return True
+
+verificar_integridad_y_licencia_instalacion()
+
+# ==========================================
+# --- SISTEMA DE ARRANQUE BLINDADO MASTER ---
+# ==========================================
+missing_modules = []
+
+try: import customtkinter as ctk
+except ImportError: missing_modules.append("customtkinter")
+
+try: import pygame
+except ImportError: missing_modules.append("pygame")
+
+try: import whisper
+except ImportError: missing_modules.append("openai-whisper")
+
+try:
+    import cv2
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
+    missing_modules.append("opencv-python")
+
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
+    missing_modules.append("torch")
+
+if missing_modules:
+    root_err = tk.Tk()
+    root_err.withdraw()
+    msg = f"El sistema requiere actualizar su motor.\nAbre CMD como administrador y ejecuta:\npip install {' '.join(missing_modules)}"
+    messagebox.showerror("Actualización Requerida", msg)
+    sys.exit()
+
+try:
+    import pyaudio
+    import wave
+    HAS_PYAUDIO = True
+except ImportError:
+    HAS_PYAUDIO = False
+
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+
+# ==========================================
+# CONFIGURACIÓN DE RUTAS DINÁMICAS (.EXE)
+# ==========================================
+if getattr(sys, 'frozen', False): folder_path = os.path.dirname(sys.executable)
+else: folder_path = os.path.dirname(os.path.abspath(__file__))
+
+os.makedirs(folder_path, exist_ok=True)
+CONFIG_FILE = os.path.join(folder_path, 'asvideo_config.json')
+ASSETS_DIR = os.path.join(folder_path, 'Assets_Defecto')
+os.makedirs(ASSETS_DIR, exist_ok=True)
+
+# ==========================================
+# DICCIONARIOS DE INTERNACIONALIZACIÓN (i18n)
+# ==========================================
+LANGUAGES = {
+    "Español": {"p1": " 1. ENTRADA DE NOTICIA ", "p2": " 2. DIRECTOR DE GUION Y DSP ", "p3": " 3. LÍNEA DE TIEMPO (CESTO) ", "p4": " 4. MESA DE MEZCLAS MASTER ", "p5": " 5. COMPILACIÓN VISUAL Y RENDER ", "btn_procesar": "🤖 ELABORAR GUION", "btn_render": "▶ INICIAR RENDERIZADO", "btn_video_guion": "📼 MEDIA A TEXTO", "lbl_titular_169": "TITULAR 16:9:", "lbl_titular_916": "TITULAR 9:16:", "btn_inyectar": "🎙️ INYECTAR AUDIO", "btn_pegar": "📋 PEGAR", "btn_limpiar": "🗑️ LIMPIAR", "lbl_voz": "🎤 Voz", "lbl_intro": "🎵 Intro", "lbl_fondo": "🎵 Fondo", "lbl_cola": "🎵 Cola", "btn_media": "➕ MEDIA", "btn_recortar": "✂️ RECORTAR", "btn_color": "🎨 COLOR", "btn_limpiar_dsp": "🧹 LIMPIAR DSP", "lbl_pitch": "Tono (Pitch):", "lbl_boost": "Boost:", "lbl_lab_vis": "LABORATORIO VISUAL:", "lbl_mus_glob": "🎵 Música Global:", "lbl_v_fades": "🎥 V.Fades (In/Out):", "lbl_a_fades": "🎵 A.Fades (In/Out):", "lbl_dur_foto": "Dur. Foto(s):", "sw_paneos": "Uso Global Paneos", "sw_cintillos": "Cintillos y Subtítulos", "sw_logos": "Logos", "lbl_esq": "📍 Esq:", "lbl_logo": "🖼️ Logo:", "lbl_traduccion": "🌍 Traducción:", "lbl_duracion": "⏱️ Duración Guion (s):", "lbl_ia": "IA", "lbl_mic": "Mic", "lbl_denoise": "Denoise", "lbl_comp": "Comp.", "lbl_uso_fondo": "Uso Fondo", "lbl_sistema_inicio": "SISTEMA EN INICIO...", "lbl_fondo_sel": "🎬 Fondo:", "lbl_formato_16_9": "Formato 16:9", "lbl_formato_9_16": "Formato 9:16", "lbl_salto_climax": "Salto Clímax Final", "btn_play": "▶ PLAY", "btn_stop": "⏹ STOP", "lbl_visor_eventos": "VISOR DE EVENTOS", "lbl_monitor_wysiwyg": "📺 MONITOR WYSIWYG", "opt_100p": "100% Pantalla", "opt_ajust": "Ajustado (Con aire)", "opt_reduc": "Reducido Proporcional", "opt_red70": "Reducido 70%", "lbl_mus_in": "Inicio Mús.(s)", "lbl_voz_ret": "Retraso Voz(s)", "lbl_dur_cola": "Dur. Cola(s)", "lbl_climax_in": "Clímax In(s)", "lbl_fin_mus": "Fin Música(s)", "log_ia_trans": "⏳ [MOTOR IA] Transcribiendo...", "log_ia_ok": "✅ Transcripción y corrección completada.", "log_render_start": "⏳ Ensamblando línea de tiempo interactiva NLE...", "log_render_ok": "✅ ÉXITO TOTAL EN RENDER:", "log_media_add": "✅ Importación de medios completada.", "log_ia_conn": "⏳ IA: Conectando motor local Ollama...", "log_ia_guion_ok": "✅ Motor IA: Guion y Titulares completados.", "log_proj_save": "💾 Proyecto guardado:", "log_proj_load": "📂 Proyecto cargado."},
+    "English": {"p1": " 1. NEWS INPUT ", "p2": " 2. SCRIPT DIRECTOR & DSP ", "p3": " 3. TIMELINE (BIN) ", "p4": " 4. MASTER MIXER ", "p5": " 5. VISUAL COMPILATION & RENDER ", "btn_procesar": "🤖 GENERATE SCRIPT", "btn_render": "▶ START RENDER", "btn_video_guion": "📼 MEDIA TO TEXT", "lbl_titular_169": "HEADLINE 16:9:", "lbl_titular_916": "HEADLINE 9:16:", "btn_inyectar": "🎙️ INJECT AUDIO", "btn_pegar": "📋 PASTE", "btn_limpiar": "🗑️ CLEAR", "lbl_voz": "🎤 Voice", "lbl_intro": "🎵 Intro", "lbl_fondo": "🎵 Background", "lbl_cola": "🎵 Tail", "btn_media": "➕ MEDIA", "btn_recortar": "✂️ TRIM", "btn_color": "🎨 COLOR", "btn_limpiar_dsp": "🧹 CLEAR DSP", "lbl_pitch": "Pitch:", "lbl_boost": "Boost:", "lbl_lab_vis": "VISUAL LABORATORY:", "lbl_mus_glob": "🎵 Global Music:", "lbl_v_fades": "🎥 V.Fades (In/Out):", "lbl_a_fades": "🎵 A.Fades (In/Out):", "lbl_dur_foto": "Photo Dur(s):", "sw_paneos": "Global Pan Use", "sw_cintillos": "Lower Thirds", "sw_logos": "Logos", "lbl_esq": "📍 Crn:", "lbl_logo": "🖼️ Logo:", "lbl_traduccion": "🌍 Translation:", "lbl_duracion": "⏱️ Script Duration (s):", "lbl_ia": "AI", "lbl_mic": "Mic", "lbl_denoise": "Denoise", "lbl_comp": "Comp.", "lbl_uso_fondo": "Background Use", "lbl_sistema_inicio": "SYSTEM STARTING...", "lbl_fondo_sel": "🎬 Background:", "lbl_formato_16_9": "16:9 Format", "lbl_formato_9_16": "9:16 Format", "lbl_salto_climax": "Final Climax Jump", "btn_play": "▶ PLAY", "btn_stop": "⏹ STOP", "lbl_visor_eventos": "EVENT VIEWER", "lbl_monitor_wysiwyg": "📺 WYSIWYG MONITOR", "opt_100p": "100% Screen", "opt_ajust": "Fitted (With padding)", "opt_reduc": "Proportional Reduced", "opt_red70": "Reduced 70%", "lbl_mus_in": "Mus. Start(s)", "lbl_voz_ret": "Voice Delay(s)", "lbl_dur_cola": "Tail Dur(s)", "lbl_climax_in": "Climax In(s)", "lbl_fin_mus": "End Music(s)", "log_ia_trans": "⏳ [AI ENGINE] Transcribing...", "log_ia_ok": "✅ Transcription and correction complete.", "log_render_start": "⏳ Assembling NLE interactive timeline...", "log_render_ok": "✅ TOTAL SUCCESS IN RENDER:", "log_media_add": "✅ Media import complete.", "log_ia_conn": "⏳ AI: Connecting local Ollama engine...", "log_ia_guion_ok": "✅ AI Engine: Script and Headlines complete.", "log_proj_save": "💾 Project saved:", "log_proj_load": "📂 Project loaded."},
+    "Русский": {"p1": " 1. ВВОД НОВОСТЕЙ ", "p2": " 2. РЕДАКТОР СЦЕНАРИЯ И DSP ", "p3": " 3. ТАЙМЛАЙН ", "p4": " 4. МАСТЕР-МИКШЕР ", "p5": " 5. ВИЗУАЛЬНАЯ КОМПИЛЯЦИЯ И РЕНДЕР ", "btn_procesar": "🤖 СОЗДАТЬ СЦЕНАРИЙ", "btn_render": "▶ НАЧАТЬ РЕНДЕРИНГ", "btn_video_guion": "📼 МЕДИА В ТЕКСТ", "lbl_titular_169": "ЗАГОЛОВОК 16:9:", "lbl_titular_916": "ЗАГОЛОВОК 9:16:", "btn_inyectar": "🎙️ ВСТАВИТЬ АУДИО", "btn_pegar": "📋 ВСТАВИТЬ", "btn_limpiar": "🗑️ ОЧИСТИТЬ", "lbl_voz": "🎤 Голос", "lbl_intro": "🎵 Интро", "lbl_fondo": "🎵 Фон", "lbl_cola": "🎵 Хвост", "btn_media": "➕ МЕДИА", "btn_recortar": "✂️ ОБРЕЗКА", "btn_color": "🎨 ЦВЕТ", "btn_limpiar_dsp": "🧹 ОЧИСТИТЬ DSP", "lbl_pitch": "Тон (Pitch):", "lbl_boost": "Усиление:", "lbl_lab_vis": "ВИЗУАЛЬНАЯ ЛАБОРАТОРИЯ:", "lbl_mus_glob": "🎵 Общая Музыка:", "lbl_v_fades": "🎥 V.Fades (Вх/Вых):", "lbl_a_fades": "🎵 A.Fades (Вх/Вых):", "lbl_dur_foto": "Длит. Фото(с):", "sw_paneos": "Глобальная Панорама", "sw_cintillos": "Титры", "sw_logos": "Логотипы", "lbl_esq": "📍 Угол:", "lbl_logo": "🖼️ Лого:", "lbl_traduccion": "🌍 Перевод:", "lbl_duracion": "⏱️ Длит. Сценария (с):", "lbl_ia": "ИИ", "lbl_mic": "Микр", "lbl_denoise": "Шумопод.", "lbl_comp": "Комп.", "lbl_uso_fondo": "Испол. фон", "lbl_sistema_inicio": "СИСТЕМА ЗАПУСКАЕТСЯ...", "lbl_fondo_sel": "🎬 Фон:", "lbl_formato_16_9": "Формат 16:9", "lbl_formato_9_16": "Формат 9:16", "lbl_salto_climax": "Финальный Прыжок Климакса", "btn_play": "▶ ИГРАТЬ", "btn_stop": "⏹ СТОП", "lbl_visor_eventos": "ПРОСМОТР СОБЫТИЙ", "lbl_monitor_wysiwyg": "📺 МОНИТОР WYSIWYG", "opt_100p": "100% Экран", "opt_ajust": "С отступами", "opt_reduc": "Уменьш. Пропорц.", "opt_red70": "Уменьшено 70%", "lbl_mus_in": "Старт Муз.(с)", "lbl_voz_ret": "Задержка(с)", "lbl_dur_cola": "Длит. Хвост(с)", "lbl_climax_in": "Климакс Вх(с)", "lbl_fin_mus": "Кон. Муз.(с)", "log_ia_trans": "⏳ [ИИ] Транскрибация...", "log_ia_ok": "✅ Транскрибация завершена.", "log_render_start": "⏳ Сборка таймлайна NLE...", "log_render_ok": "✅ УСПЕШНЫЙ РЕНДЕР:", "log_media_add": "✅ Импорт медиа завершен.", "log_ia_conn": "⏳ ИИ: Подключение...", "log_ia_guion_ok": "✅ ИИ: Сценарий готов.", "log_proj_save": "💾 Проект сохранен:", "log_proj_load": "📂 Проект загружен."},
+    "Português": {"p1": " 1. ENTRADA DE NOTÍCIA ", "p2": " 2. DIRETOR DE ROTEIRO E DSP ", "p3": " 3. LINHA DO TEMPO ", "p4": " 4. MESA MASTER ", "p5": " 5. RENDER VISUAL ", "btn_procesar": "🤖 GERAR ROTEIRO", "btn_render": "▶ INICIAR RENDER", "btn_video_guion": "📼 MÍDIA PARA TEXTO", "lbl_titular_169": "MANCHETE 16:9:", "lbl_titular_916": "MANCHETE 9:16:", "btn_inyectar": "🎙️ INJETAR ÁUDIO", "btn_pegar": "📋 COLAR", "btn_limpiar": "🗑️ LIMPAR", "lbl_voz": "🎤 Voz", "lbl_intro": "🎵 Intro", "lbl_fondo": "🎵 Fundo", "lbl_cola": "🎵 Cauda", "btn_media": "➕ MÍDIA", "btn_recortar": "✂️ CORTAR", "btn_color": "🎨 COR", "btn_limpiar_dsp": "🧹 LIMPAR DSP", "lbl_pitch": "Tom (Pitch):", "lbl_boost": "Boost:", "lbl_lab_vis": "LABORATÓRIO VISUAL:", "lbl_mus_glob": "🎵 Música Global:", "lbl_v_fades": "🎥 V.Fades (In/Out):", "lbl_a_fades": "🎵 A.Fades (In/Out):", "lbl_dur_foto": "Dur. Foto(s):", "sw_paneos": "Uso Global Pan", "sw_cintillos": "Manchetes", "sw_logos": "Logos", "lbl_esq": "📍 Esq:", "lbl_logo": "🖼️ Logo:", "lbl_traduccion": "🌍 Tradução:", "lbl_duracion": "⏱️ Duração Roteiro (s):", "lbl_ia": "IA", "lbl_mic": "Mic", "lbl_denoise": "Denoise", "lbl_comp": "Comp.", "lbl_uso_fondo": "Uso Fundo", "lbl_sistema_inicio": "SISTEMA INICIANDO...", "lbl_fondo_sel": "🎬 Fundo:", "lbl_formato_16_9": "Formato 16:9", "lbl_formato_9_16": "Formato 9:16", "lbl_salto_climax": "Salto Clímax Final", "btn_play": "▶ PLAY", "btn_stop": "⏹ STOP", "lbl_visor_eventos": "VISUALIZADOR DE EVENTOS", "lbl_monitor_wysiwyg": "📺 MONITOR WYSIWYG", "opt_100p": "100% Tela", "opt_ajust": "Ajustado (Com margem)", "opt_reduc": "Reduzido Proporcional", "opt_red70": "Reduzido 70%", "lbl_mus_in": "Início Mús.(s)", "lbl_voz_ret": "Atraso Voz(s)", "lbl_dur_cola": "Dur. Cauda(s)", "lbl_climax_in": "Clímax In(s)", "lbl_fin_mus": "Fim Música(s)", "log_ia_trans": "⏳ [IA] Transcrevendo...", "log_ia_ok": "✅ Transcrição completa.", "log_render_start": "⏳ Montando linha do tempo NLE...", "log_render_ok": "✅ SUCESSO TOTAL:", "log_media_add": "✅ Importação de mídia concluída.", "log_ia_conn": "⏳ IA: Conectando Ollama...", "log_ia_guion_ok": "✅ IA: Roteiro e Manchetes concluídos.", "log_proj_save": "💾 Projeto salvo:", "log_proj_load": "📂 Projeto carregado."},
+    "Chino (Mandarín)": {"p1": " 1. 新闻输入 ", "p2": " 2. 脚本编辑器与 DSP ", "p3": " 3. 时间线 ", "p4": " 4. 主混音器 ", "p5": " 5. 视频渲染 ", "btn_procesar": "🤖 生成脚本", "btn_render": "▶ 开始渲染", "btn_video_guion": "📼 媒体转文本", "lbl_titular_169": "标题 16:9:", "lbl_titular_916": "标题 9:16:", "btn_inyectar": "🎙️ 注入音频", "btn_pegar": "📋 粘贴", "btn_limpiar": "🗑️ 清除", "lbl_voz": "🎤 声音", "lbl_intro": "🎵 介绍", "lbl_fondo": "🎵 背景", "lbl_cola": "🎵 尾部", "btn_media": "➕ 媒体", "btn_recortar": "✂️ 裁剪", "btn_color": "🎨 颜色", "btn_limpiar_dsp": "🧹 清理 DSP", "lbl_pitch": "音调 (Pitch):", "lbl_boost": "提升:", "lbl_lab_vis": "视觉实验室:", "lbl_mus_glob": "🎵 全局音乐:", "lbl_v_fades": "🎥 视频淡入/出:", "lbl_a_fades": "🎵 音频淡入/出:", "lbl_dur_foto": "照片时长(s):", "sw_paneos": "全局平移缩放", "sw_cintillos": "横幅", "sw_logos": "标志", "lbl_esq": "📍 位置:", "lbl_logo": "🖼️ 标志:", "lbl_traduccion": "🌍 翻译:", "lbl_duracion": "⏱️ 脚本时长 (s):", "lbl_ia": "人工智能", "lbl_mic": "麦克风", "lbl_denoise": "降噪", "lbl_comp": "压缩", "lbl_uso_fondo": "背景使用", "lbl_sistema_inicio": "系统启动中...", "lbl_fondo_sel": "🎬 背景:", "lbl_formato_16_9": "16:9 格式", "lbl_formato_9_16": "9:16 格式", "lbl_salto_climax": "最终高潮跳跃", "btn_play": "▶ 播放", "btn_stop": "⏹ 停止", "lbl_visor_eventos": "事件查看器", "lbl_monitor_wysiwyg": "📺 WYSIWYG 监视器", "opt_100p": "100% 屏幕", "opt_ajust": "适应 (留白)", "opt_reduc": "等比缩小", "opt_red70": "缩小 70%", "lbl_mus_in": "音乐开始(s)", "lbl_voz_ret": "语音延迟(s)", "lbl_dur_cola": "尾部时长(s)", "lbl_climax_in": "高潮进入(s)", "lbl_fin_mus": "结束音乐(s)", "log_ia_trans": "⏳ [AI] 转录中...", "log_ia_ok": "✅ 转录完成。", "log_render_start": "⏳ 组装时间线...", "log_render_ok": "✅ 渲染成功:", "log_media_add": "✅ 媒体导入完成。", "log_ia_conn": "⏳ AI: 连接中...", "log_ia_guion_ok": "✅ AI: 脚本和标题已完成。", "log_proj_save": "💾 项目已保存:", "log_proj_load": "📂 项目已加载。"},
+    "Hindi": {"p1": " 1. समाचार इनपुट ", "p2": " 2. स्क्रिप्ट और डीएसपी ", "p3": " 3. टाइमलाइन ", "p4": " 4. मास्टर मिक्सर ", "p5": " 5. विज़ुअल रेंडर ", "btn_procesar": "🤖 स्क्रिप्ट बनाएं", "btn_render": "▶ रेंडर शुरू करें", "btn_video_guion": "📼 मीडिया से टेक्स्ट", "lbl_titular_169": "शीर्षक 16:9:", "lbl_titular_916": "शीर्षक 9:16:", "btn_inyectar": "🎙️ ऑडियो इंजेक्ट करें", "btn_pegar": "📋 पेस्ट करें", "btn_limpiar": "🗑️ साफ़ करें", "lbl_voz": "🎤 आवाज़", "lbl_intro": "🎵 इंट्रो", "lbl_fondo": "🎵 पृष्ठभूमि", "lbl_cola": "🎵 टेल", "btn_media": "➕ मीडिया", "btn_recortar": "✂️ ट्रिम करें", "btn_color": "🎨 रंग", "btn_limpiar_dsp": "🧹 डीएसपी साफ़ करें", "lbl_pitch": "पिच:", "lbl_boost": "बूस्ट:", "lbl_lab_vis": "दृश्य प्रयोगशाला:", "lbl_mus_glob": "🎵 वैश्विक संगीत:", "lbl_v_fades": "🎥 वी.फेड्स:", "lbl_a_fades": "🎵 ए.फेड्स:", "lbl_dur_foto": "फोटो अवधि:", "sw_paneos": "पैन", "sw_cintillos": "लोअर थर्ड्स", "sw_logos": "लोगो", "lbl_esq": "📍 कोना:", "lbl_logo": "🖼️ लोगो:", "lbl_traduccion": "🌍 अनुवाद:", "lbl_duracion": "⏱️ स्क्रिप्ट अवधि:", "lbl_ia": "एआई", "lbl_mic": "माइक", "lbl_denoise": "शोर कम करें", "lbl_comp": "कम्प.", "lbl_uso_fondo": "पृष्ठभूमि उपयोग", "lbl_sistema_inicio": "सिस्टम शुरू हो रहा है...", "lbl_fondo_sel": "🎬 पृष्ठभूमि:", "lbl_formato_16_9": "16:9 प्रारूप", "lbl_formato_9_16": "9:16 प्रारूप", "lbl_salto_climax": "अंतिम क्लाइमेक्स जंप", "btn_play": "▶ प्ले", "btn_stop": "⏹ स्टॉप", "lbl_visor_eventos": "घटना दर्शक", "lbl_monitor_wysiwyg": "📺 WYSIWYG मॉनिटर", "opt_100p": "100% स्क्रीन", "opt_ajust": "फिट (मार्जिन)", "opt_reduc": "आनुपातिक रूप से कम", "opt_red70": "70% कम", "lbl_mus_in": "संगीत शुरू(s)", "lbl_voz_ret": "आवाज़ देरी(s)", "lbl_dur_cola": "अवधि टेल(s)", "lbl_climax_in": "क्लाइमेक्स(s)", "lbl_fin_mus": "संगीत अंत(s)", "log_ia_trans": "⏳ [AI] ट्रांसक्राइब कर रहा है...", "log_ia_ok": "✅ ट्रांसक्रिप्शन पूरा हुआ।", "log_render_start": "⏳ टाइमलाइन असेंबल कर रहा है...", "log_render_ok": "✅ रेंडर सफल:", "log_media_add": "✅ मीडिया आयात पूरा हुआ।", "log_ia_conn": "⏳ AI: कनेक्ट हो रहा है...", "log_ia_guion_ok": "✅ AI: स्क्रिप्ट और शीर्षक पूरे हुए।", "log_proj_save": "💾 प्रोजेक्ट सहेजा गया:", "log_proj_load": "📂 प्रोजेक्ट लोड किया गया."},
+    "Deutsch": {"p1": " 1. NACHRICHTEN ", "p2": " 2. SKRIPT & DSP ", "p3": " 3. ZEITLEISTE ", "p4": " 4. MASTER MIXER ", "p5": " 5. RENDER ", "btn_procesar": "🤖 SKRIPT ERSTELLEN", "btn_render": "▶ RENDER STARTEN", "btn_video_guion": "📼 MEDIA ZU TEXT", "lbl_titular_169": "SCHLAGZEILE 16:9:", "lbl_titular_916": "SCHLAGZEILE 9:16:", "btn_inyectar": "🎙️ AUDIO EINFÜGEN", "btn_pegar": "📋 EINFÜGEN", "btn_limpiar": "🗑️ LÖSCHEN", "lbl_voz": "🎤 Stimme", "lbl_intro": "🎵 Intro", "lbl_fondo": "🎵 Hintergrund", "lbl_cola": "🎵 Ende", "btn_media": "➕ MEDIEN", "btn_recortar": "✂️ SCHNEIDEN", "btn_color": "🎨 FARBE", "btn_limpiar_dsp": "🧹 DSP LÖSCHEN", "lbl_pitch": "Tonhöhe:", "lbl_boost": "Boost:", "lbl_lab_vis": "VISUELLES LABOR:", "lbl_mus_glob": "🎵 Globale Musik:", "lbl_v_fades": "🎥 V.Fades:", "lbl_a_fades": "🎵 A.Fades:", "lbl_dur_foto": "Foto Dauer:", "sw_paneos": "Schwenken", "sw_cintillos": "Bauchbinden", "sw_logos": "Logos", "lbl_esq": "📍 Ecke:", "lbl_logo": "🖼️ Logo:", "lbl_traduccion": "🌍 Übersetzung:", "lbl_duracion": "⏱️ Skript Dauer (s):", "lbl_ia": "KI", "lbl_mic": "Mik", "lbl_denoise": "Rauschen", "lbl_comp": "Komp.", "lbl_uso_fondo": "Hintergrund", "lbl_sistema_inicio": "SYSTEM STARTET...", "lbl_fondo_sel": "🎬 Hintergrund:", "lbl_formato_16_9": "16:9 Format", "lbl_formato_9_16": "9:16 Format", "lbl_salto_climax": "Finale Höhepunkt", "btn_play": "▶ PLAY", "btn_stop": "⏹ STOP", "lbl_visor_eventos": "EREIGNISANZEIGE", "lbl_monitor_wysiwyg": "📺 WYSIWYG MONITOR", "opt_100p": "100% Bildschirm", "opt_ajust": "Angepasst (Rand)", "opt_reduc": "Proportional verkleinert", "opt_red70": "Reduziert 70%", "lbl_mus_in": "Mus. Start(s)", "lbl_voz_ret": "Stimme Verz.(s)", "lbl_dur_cola": "Ende Dauer(s)", "lbl_climax_in": "Höhepunkt(s)", "lbl_fin_mus": "Musik Ende(s)", "log_ia_trans": "⏳ [KI] Transkribiere...", "log_ia_ok": "✅ Transkription abgeschlossen.", "log_render_start": "⏳ Erstelle NLE-Timeline...", "log_render_ok": "✅ RENDER ERFOLGREICH:", "log_media_add": "✅ Medienimport abgeschlossen.", "log_ia_conn": "⏳ KI: Verbinde...", "log_ia_guion_ok": "✅ KI: Skript und Schlagzeilen fertig.", "log_proj_save": "💾 Projekt gespeichert:", "log_proj_load": "📂 Projekt geladen."},
+    "Français": {"p1": " 1. ACTUALITÉS ", "p2": " 2. SCRIPT ET DSP ", "p3": " 3. CHRONOLOGIE ", "p4": " 4. MIXEUR MASTER ", "p5": " 5. RENDU ", "btn_procesar": "🤖 CRÉER SCRIPT", "btn_render": "▶ DÉMARRER RENDU", "btn_video_guion": "📼 MÉDIA EN TEXTE", "lbl_titular_169": "TITRE 16:9:", "lbl_titular_916": "TITRE 9:16:", "btn_inyectar": "🎙️ INJECTER AUDIO", "btn_pegar": "📋 COLLER", "btn_limpiar": "🗑️ EFFACER", "lbl_voz": "🎤 Voix", "lbl_intro": "🎵 Intro", "lbl_fondo": "🎵 Fond", "lbl_cola": "🎵 Fin", "btn_media": "➕ MÉDIAS", "btn_recortar": "✂️ COUPER", "btn_color": "🎨 COULEUR", "btn_limpiar_dsp": "🧹 EFFACER DSP", "lbl_pitch": "Hauteur:", "lbl_boost": "Boost:", "lbl_lab_vis": "LABO VISUEL:", "lbl_mus_glob": "🎵 Musique Globale:", "lbl_v_fades": "🎥 V.Fades:", "lbl_a_fades": "🎵 A.Fades:", "lbl_dur_foto": "Durée Photo:", "sw_paneos": "Panoramique", "sw_cintillos": "Bandeaux", "sw_logos": "Logos", "lbl_esq": "📍 Coin:", "lbl_logo": "🖼️ Logo:", "lbl_traduccion": "🌍 Traduction:", "lbl_duracion": "⏱️ Durée Script (s):", "lbl_ia": "IA", "lbl_mic": "Micro", "lbl_denoise": "Débruitage", "lbl_comp": "Comp.", "lbl_uso_fondo": "Fond Actif", "lbl_sistema_inicio": "DÉMARRAGE...", "lbl_fondo_sel": "🎬 Fond:", "lbl_formato_16_9": "Format 16:9", "lbl_formato_9_16": "Format 9:16", "lbl_salto_climax": "Saut Climax Final", "btn_play": "▶ LECTURE", "btn_stop": "⏹ STOP", "lbl_visor_eventos": "VISIONNEUSE D'ÉVÉNEMENTS", "lbl_monitor_wysiwyg": "📺 MONITEUR WYSIWYG", "opt_100p": "100% Écran", "opt_ajust": "Ajusté (Marge)", "opt_reduc": "Réduit Proportionnel", "opt_red70": "Réduit 70%", "lbl_mus_in": "Début Mus.(s)", "lbl_voz_ret": "Délai Voix(s)", "lbl_dur_cola": "Durée Fin(s)", "lbl_climax_in": "Climax(s)", "lbl_fin_mus": "Fin Mus.(s)", "log_ia_trans": "⏳ [IA] Transcription...", "log_ia_ok": "✅ Transcription terminée.", "log_render_start": "⏳ Assemblage de la timeline NLE...", "log_render_ok": "✅ RENDU RÉUSSI:", "log_media_add": "✅ Importation de médias terminée.", "log_ia_conn": "⏳ IA: Connexion...", "log_ia_guion_ok": "✅ IA: Script et Titres terminés.", "log_proj_save": "💾 Projet enregistré:", "log_proj_load": "📂 Projet chargé."},
+    "العربية": {"p1": " 1. الأخبار ", "p2": " 2. النص و DSP ", "p3": " 3. الجدول الزمني ", "p4": " 4. المكسر الرئيسي ", "p5": " 5. تصيير ", "btn_procesar": "🤖 إنشاء نص", "btn_render": "▶ بدء التصيير", "btn_video_guion": "📼 وسائط إلى نص", "lbl_titular_169": "عنوان 16:9:", "lbl_titular_916": "عنوان 9:16:", "btn_inyectar": "🎙️ حقن الصوت", "btn_pegar": "📋 لصق", "btn_limpiar": "🗑️ مسح", "lbl_voz": "🎤 صوت", "lbl_intro": "🎵 مقدمة", "lbl_fondo": "🎵 خلفية", "lbl_cola": "🎵 نهاية", "btn_media": "➕ وسائط", "btn_recortar": "✂️ قص", "btn_color": "🎨 لون", "btn_limpiar_dsp": "🧹 مسح DSP", "lbl_pitch": "نغمة:", "lbl_boost": "تعزيز:", "lbl_lab_vis": "مختبر بصري:", "lbl_mus_glob": "🎵 موسيقى عالمية:", "lbl_v_fades": "🎥 تلاشي V:", "lbl_a_fades": "🎵 تلاشي A:", "lbl_dur_foto": "مدة الصورة:", "sw_paneos": "تحريك", "sw_cintillos": "أشرطة", "sw_logos": "شعارات", "lbl_esq": "📍 زاوية:", "lbl_logo": "🖼️ شعار:", "lbl_traduccion": "🌍 ترجمة:", "lbl_duracion": "⏱️ مدة النص:", "lbl_ia": "ذكاء", "lbl_mic": "مايك", "lbl_denoise": "ضوضاء", "lbl_comp": "ضغط", "lbl_uso_fondo": "استخدام كخلفية", "lbl_sistema_inicio": "بدء النظام...", "lbl_fondo_sel": "🎬 خلفية:", "lbl_formato_16_9": "تنسيق 16:9", "lbl_formato_9_16": "تنسيق 9:16", "lbl_salto_climax": "قفزة النهاية", "btn_play": "▶ تشغيل", "btn_stop": "⏹ إيقاف", "lbl_visor_eventos": "عارض الأحداث", "lbl_monitor_wysiwyg": "📺 شاشة WYSIWYG", "opt_100p": "100% شاشة", "opt_ajust": "مضبوط (مع هوامش)", "opt_reduc": "مصغر بشكل متناسب", "opt_red70": "مصغر 70%", "lbl_mus_in": "بدء الموسيقى(s)", "lbl_voz_ret": "تأخير الصوت(s)", "lbl_dur_cola": "مدة النهاية(s)", "lbl_climax_in": "الذروة(s)", "lbl_fin_mus": "نهاية الموسيقى(s)", "log_ia_trans": "⏳ [ذكاء] يتم النسخ...", "log_ia_ok": "✅ اكتمل النسخ.", "log_render_start": "⏳ تجميع الجدول الزمني...", "log_render_ok": "✅ نجاح التصيير:", "log_media_add": "✅ اكتمل استيراد الوسائط.", "log_ia_conn": "⏳ ذكاء: جاري الاتصال...", "log_ia_guion_ok": "✅ ذكاء: اكتمل النص والعناوين.", "log_proj_save": "💾 تم حفظ المشروع:", "log_proj_load": "📂 تم تحميل المشروع."},
+    "Italiano": {"p1": " 1. NOTIZIE ", "p2": " 2. SCRIPT E DSP ", "p3": " 3. SEQUENZA TEMPORALE ", "p4": " 4. MIXER MASTER ", "p5": " 5. RENDER ", "btn_procesar": "🤖 CREA SCRIPT", "btn_render": "▶ AVVIA RENDER", "btn_video_guion": "📼 MEDIA A TESTO", "lbl_titular_169": "TITOLO 16:9:", "lbl_titular_916": "TITOLO 9:16:", "btn_inyectar": "🎙️ INIETTA AUDIO", "btn_pegar": "📋 INCOLLA", "btn_limpiar": "🗑️ PULISCI", "lbl_voz": "🎤 Voce", "lbl_intro": "🎵 Intro", "lbl_fondo": "🎵 Sfondo", "lbl_cola": "🎵 Coda", "btn_media": "➕ MEDIA", "btn_recortar": "✂️ TAGLIA", "btn_color": "🎨 COLORE", "btn_limpiar_dsp": "🧹 PULISCI DSP", "lbl_pitch": "Tonalità:", "lbl_boost": "Boost:", "lbl_lab_vis": "LABORATORIO VISIVO:", "lbl_mus_glob": "🎵 Musica Globale:", "lbl_v_fades": "🎥 V.Fades:", "lbl_a_fades": "🎵 A.Fades:", "lbl_dur_foto": "Durata Foto:", "sw_paneos": "Panoramica", "sw_cintillos": "Sottopancia", "sw_logos": "Loghi", "lbl_esq": "📍 Angolo:", "lbl_logo": "🖼️ Logo:", "lbl_traduccion": "🌍 Traduzione:", "lbl_duracion": "⏱️ Durata Script (s):", "lbl_ia": "IA", "lbl_mic": "Mic", "lbl_denoise": "Rumore", "lbl_comp": "Comp.", "lbl_uso_fondo": "Uso Sfondo", "lbl_sistema_inicio": "SISTEMA IN AVVIO...", "lbl_fondo_sel": "🎬 Sfondo:", "lbl_formato_16_9": "Formato 16:9", "lbl_formato_9_16": "Formato 9:16", "lbl_salto_climax": "Salto Climax Finale", "btn_play": "▶ PLAY", "btn_stop": "⏹ STOP", "lbl_visor_eventos": "VISUALIZZATORE EVENTI", "lbl_monitor_wysiwyg": "📺 MONITOR WYSIWYG", "opt_100p": "100% Schermo", "opt_ajust": "Adattato (Margine)", "opt_reduc": "Ridotto Proporzionale", "opt_red70": "Ridotto 70%", "lbl_mus_in": "Inizio Mus.(s)", "lbl_voz_ret": "Ritardo Voce(s)", "lbl_dur_cola": "Durata Coda(s)", "lbl_climax_in": "Climax In(s)", "lbl_fin_mus": "Fine Musica(s)", "log_ia_trans": "⏳ [IA] Trascrizione...", "log_ia_ok": "✅ Trascrizione completata.", "log_render_start": "⏳ Assemblaggio timeline NLE...", "log_render_ok": "✅ RENDER COMPLETATO:", "log_media_add": "✅ Importazione media completata.", "log_ia_conn": "⏳ IA: Connessione...", "log_ia_guion_ok": "✅ IA: Script e Titoli completati.", "log_proj_save": "💾 Progetto salvato:", "log_proj_load": "📂 Progetto caricato."},
+    "Japonés": {"p1": " 1. ニュース入力 ", "p2": " 2. スクリプト＆DSP ", "p3": " 3. タイムライン ", "p4": " 4. マスターミキサー ", "p5": " 5. ビジュアルレンダリング ", "btn_procesar": "🤖 スクリプト生成", "btn_render": "▶ レンダリング開始", "btn_video_guion": "📼 メディアからテキスト", "lbl_titular_169": "見出し 16:9:", "lbl_titular_916": "見出し 9:16:", "btn_inyectar": "🎙️ 音声注入", "btn_pegar": "📋 貼り付け", "btn_limpiar": "🗑️ クリア", "lbl_voz": "🎤 音声", "lbl_intro": "🎵 イントロ", "lbl_fondo": "🎵 背景", "lbl_cola": "🎵 テール", "btn_media": "➕ メディア", "btn_recortar": "✂️ トリミング", "btn_color": "🎨 カラー", "btn_limpiar_dsp": "🧹 DSPクリア", "lbl_pitch": "ピッチ:", "lbl_boost": "ブースト:", "lbl_lab_vis": "ビジュアルラボ:", "lbl_mus_glob": "🎵 グローバル音楽:", "lbl_v_fades": "🎥 V.フェード:", "lbl_a_fades": "🎵 A.フェード:", "lbl_dur_foto": "写真の長さ:", "sw_paneos": "パニング", "sw_cintillos": "テロップ", "sw_logos": "ロゴ", "lbl_esq": "📍 位置:", "lbl_logo": "🖼️ ロゴ:", "lbl_traduccion": "🌍 翻訳:", "lbl_duracion": "⏱️ スクリプトの長さ:", "lbl_ia": "AI", "lbl_mic": "マイク", "lbl_denoise": "ノイズ除去", "lbl_comp": "コンプ", "lbl_uso_fondo": "背景使用", "lbl_sistema_inicio": "システム起動中...", "lbl_fondo_sel": "🎬 背景:", "lbl_formato_16_9": "16:9 フォーマット", "lbl_formato_9_16": "9:16 フォーマット", "lbl_salto_climax": "クライマックス", "btn_play": "▶ 再生", "btn_stop": "⏹ 停止", "lbl_visor_eventos": "イベントビューア", "lbl_monitor_wysiwyg": "📺 WYSIWYG モニター", "opt_100p": "100% 画面", "opt_ajust": "フィット", "opt_reduc": "比例縮小", "opt_red70": "70% 縮小", "lbl_mus_in": "音楽開始(s)", "lbl_voz_ret": "音声遅延(s)", "lbl_dur_cola": "テール長(s)", "lbl_climax_in": "クライマックス(s)", "lbl_fin_mus": "音楽終了(s)", "log_ia_trans": "⏳ [AI] 文字起こし中...", "log_ia_ok": "✅ 文字起こし完了。", "log_render_start": "⏳ タイムラインアセンブル中...", "log_render_ok": "✅ レンダリング成功:", "log_media_add": "✅ メディアインポート完了。", "log_ia_conn": "⏳ AI: 接続中...", "log_ia_guion_ok": "✅ AI: スクリプトと見出し完了。", "log_proj_save": "💾 プロジェクト保存:", "log_proj_load": "📂 プロジェクト読み込み."}
+}
+
+DEFAULT_CONFIG = {
+    "empresa_nombre": "Avrora Soft - Vibola LLC", 
+    "empresa_direccion": "Master NLE System",
+    "idioma_interfaz": "Español",
+    "idioma_salida": "Español",
+    "lista_logos": {
+        "Ninguno": "", 
+        "Logo Principal": os.path.join(ASSETS_DIR, "logo_defecto.png")
+    },
+    "lista_fondos": {
+        "Negro (Defecto)": ""
+    },
+    "lista_musicas": {
+        "Sin música (Defecto)": ""
+    },
+    "logos_pos_16_9": {
+        "TL": {"rel_x": 0.03, "rel_y": 0.03},
+        "TR": {"rel_x": 0.80, "rel_y": 0.03},
+        "BL": {"rel_x": 0.05, "rel_y": 0.80},
+        "BR": {"rel_x": 0.80, "rel_y": 0.80}
+    },
+    "logos_pos_9_16": {
+        "TL": {"rel_x": 0.05, "rel_y": 0.05},
+        "TR": {"rel_x": 0.70, "rel_y": 0.05},
+        "BL": {"rel_x": 0.05, "rel_y": 0.85},
+        "BR": {"rel_x": 0.70, "rel_y": 0.85}
+    },
+    "output_final": "produccion_final_asvideo", 
+    "font_path": "C:/Windows/Fonts/arialbd.ttf", 
+    "bg_deep": "#080808", 
+    "bg_panel": "#1A1A1A", 
+    "accent_red": "#900C3F", 
+    "accent_blue": "#00BFFF",
+    "voz_locutor_clon": "clon_referencia.wav", 
+    "last_piper_voice": "",
+    "fps": "30", 
+    "ollama_url": "http://localhost:11434/api/generate", 
+    "ollama_check": "http://localhost:11434/api/tags",
+    "last_bg_video": "Negro (Defecto)",
+    "last_music": "Sin música (Defecto)",
+    "vol_mem_voz": 1.0,
+    "vol_mem_intro": 1.0,
+    "vol_mem_fondo": 0.20,
+    "vol_mem_cola": 1.0,
+    "last_color_tit": "Azul Noticias",
+    "last_color_sub": "Negro Sobrio"
+}
+
+PALETA_COLORES = {
+    "Azul Noticias": {"bg": "#003399", "fg": "white"}, 
+    "Rojo Urgente": {"bg": "#CC0000", "fg": "white"},
+    "Verde Esmeralda": {"bg": "#006B3C", "fg": "white"}, 
+    "Naranja Dinámico": {"bg": "#EE5500", "fg": "white"},
+    "Gris Pálido": {"bg": "#D3D3D3", "fg": "black"},
+    "Negro Sobrio": {"bg": "#111111", "fg": "white"},
+    "Morado Profundo": {"bg": "#4A148C", "fg": "white"},
+    "Cian Tech": {"bg": "#00BCD4", "fg": "black"},
+    "Amarillo Alerta": {"bg": "#FFD600", "fg": "black"},
+    "Magenta Show": {"bg": "#C51162", "fg": "white"},
+    "Marrón Tierra": {"bg": "#5D4037", "fg": "white"},
+    "Azul Marino": {"bg": "#1A237E", "fg": "white"},
+    "Rojo Fuego": {"bg": "#D50000", "fg": "white"},
+    "Verde Lima": {"bg": "#AEEA00", "fg": "black"},
+    "Rosa Pastel": {"bg": "#F8BBD0", "fg": "black"},
+    "Gris Antracita": {"bg": "#263238", "fg": "white"},
+    "Dorado Premium": {"bg": "#FFAB00", "fg": "black"},
+    "Plata Elegante": {"bg": "#B0BEC5", "fg": "black"},
+    "Violeta Neón": {"bg": "#AA00FF", "fg": "white"},
+    "Azul Hielo": {"bg": "#84FFFF", "fg": "black"},
+    "Oliva Fresco": {"bg": "#64DD17", "fg": "black"},
+    "Naranja Quemado": {"bg": "#E65100", "fg": "white"},
+    "Vino Tinto": {"bg": "#880E4F", "fg": "white"},
+    "Blanco Puro": {"bg": "#FFFFFF", "fg": "black"}
+}
+
+LISTA_TRANSICIONES = ["Cortar"]
+
+def format_ass_time(sec):
+    sec = max(0.0, float(sec))
+    h = int(sec // 3600)
+    m = int((sec % 3600) // 60)
+    s = sec % 60
+    return f"{h}:{m:02d}:{s:05.2f}"
+
+def agrupar_subtitulos_dos_lineas(texto, limite_caracteres=35):
+    words = texto.split()
+    if not words: return []
+    chunks = []
+    current_chunk = []
+    current_line = ""
+    lines_in_chunk = 0
+    for w in words:
+        if len(current_line) + len(w) + 1 <= limite_caracteres:
+            current_line += (w + " ")
+        else:
+            current_chunk.append(current_line.strip())
+            lines_in_chunk += 1
+            current_line = w + " "
+            if lines_in_chunk == 2:
+                chunks.append("\\N".join(current_chunk))
+                current_chunk = []
+                lines_in_chunk = 0
+    if current_line:
+        current_chunk.append(current_line.strip())
+    if current_chunk:
+        chunks.append("\\N".join(current_chunk))
+    return chunks
+
+class AppASvideo:
+    def __init__(self, root):
+        self.root = root
+        self.config = DEFAULT_CONFIG.copy()
+        self.cargar_configuracion()
+        self.paleta_colores = PALETA_COLORES
+        self.idioma_actual = self.config.get("idioma_interfaz", "Español")
+        self.idioma_salida_guion = ctk.StringVar(value=self.config.get("idioma_salida", "Español"))
+        self.modelo_whisper_cacheado = None
+        
+        self.dict_file = os.path.join(folder_path, 'diccionario_fonetico.json')
+        if not os.path.exists(self.dict_file):
+            with open(self.dict_file, 'w', encoding='utf-8') as f:
+                json.dump({"Égüez": "Egwes", "égüez": "egwes", "güe": "gwe", "güi": "gwi"}, f, indent=4)
+        
+        self.has_cuda = torch.cuda.is_available() if HAS_TORCH else False
+        
+        self.root.title(f"{self.config['empresa_nombre']} | Suite Master V1.5")
+        self.root.geometry("1600x1000")
+        
+        try: self.root.state('zoomed')
+        except: pass
+        
+        self.root.configure(fg_color=self.config["bg_deep"])
+        
+        try: pygame.mixer.init()
+        except: pass
+            
+        self.lista_media_obj = []
+        self.indice_media_seleccionado = -1
+        
+        self.vol_voz = ctk.DoubleVar(value=self.config.get("vol_mem_voz", 1.0))
+        self.vol_mus_intro = ctk.DoubleVar(value=self.config.get("vol_mem_intro", 1.0))
+        self.vol_mus_fondo = ctk.DoubleVar(value=self.config.get("vol_mem_fondo", 0.20))
+        self.vol_mus_cola = ctk.DoubleVar(value=self.config.get("vol_mem_cola", 1.0))
+        
+        for v in [self.vol_voz, self.vol_mus_intro, self.vol_mus_fondo, self.vol_mus_cola]:
+            v.trace_add("write", lambda *args: self.guardar_volumenes())
+        
+        self.voz_pitch = ctk.DoubleVar(value=0.0)
+        self.voz_denoise = ctk.BooleanVar(value=False)
+        self.voz_compresor = ctk.BooleanVar(value=True)
+        self.voz_boost = ctk.DoubleVar(value=0.0)
+        self.dur_foto = ctk.StringVar(value="5.0")
+        
+        self.efecto_ken_burns = ctk.BooleanVar(value=False)
+        self.duracion_guion_ia = ctk.StringVar(value="60")
+        
+        self.vid_fadein = ctk.StringVar(value="1.0")
+        self.vid_fadeout = ctk.StringVar(value="1.0")
+        self.aud_fadein = ctk.StringVar(value="1.0")
+        self.aud_fadeout = ctk.StringVar(value="4.0")       
+        
+        self.mus_inicio = ctk.StringVar(value="0.0")
+        self.voz_retraso = ctk.StringVar(value="2.0")
+        self.mus_salto_climax = ctk.StringVar(value="72.0")
+        self.mus_fin_climax = ctk.StringVar(value="82.0")
+        self.duracion_cola_mus = ctk.StringVar(value="6.0")
+        self.usar_climax_musica = ctk.BooleanVar(value=True)
+        
+        self.fuente_voz = ctk.StringVar(value="IA")
+        self.tts_mode = ctk.StringVar(value="Auto Inteligente")
+        self.is_recording = False
+        self.ruta_voz_personal = os.path.join(folder_path, "mi_voz_asvideo.wav")
+        self.ruta_voz_procesada = os.path.join(folder_path, "temp_voz_procesada.wav")
+        self.ruta_cortina_musical = None
+        self.duracion_musica = 0.0
+        self.tiempo_actual_musica = ctk.DoubleVar(value=0.0)
+        self.is_playing = False
+        self.is_paused = False
+        self.start_offset = 0.0
+        self.updater_id = None
+        self.current_monitor_bg = None
+        
+        self.formato_video = ctk.StringVar(value="9:16")
+        self.encuadre_169 = ctk.StringVar(value="100% Pantalla")
+        self.encuadre_916 = ctk.StringVar(value="Reducido Proporcional")
+        self.incluir_textos = ctk.BooleanVar(value=True)
+        self.incluir_logo = ctk.BooleanVar(value=True)
+        self.color_cintillo = ctk.StringVar(value=self.config.get("last_color_tit", "Azul Noticias"))
+        self.color_cintillo_sub = ctk.StringVar(value=self.config.get("last_color_sub", "Negro Sobrio"))
+        
+        self.subtitular_entrevistas = ctk.BooleanVar(value=True)
+        self.dict_textos_entrevistas = {}
+
+        self.logos = {
+            "TL": {"name": "Sup. Izq", "tk_img": None, "rel_x": 0.05, "rel_y": 0.05},
+            "TR": {"name": "Sup. Der", "tk_img": None, "rel_x": 0.80, "rel_y": 0.05},
+            "BL": {"name": "Inf. Izq", "tk_img": None, "rel_x": 0.05, "rel_y": 0.80},
+            "BR": {"name": "Inf. Der", "tk_img": None, "rel_x": 0.80, "rel_y": 0.80}
+        }
+        self.drag_data = {"x": 0, "y": 0, "item": None, "pos": None}
+        self.logo_selecciones = {
+            "TL": ctk.StringVar(value="Logo Principal"),
+            "TR": ctk.StringVar(value="Ninguno"),
+            "BL": ctk.StringVar(value="Ninguno"),
+            "BR": ctk.StringVar(value="Ninguno")
+        }
+        
+        self.fondo_seleccionado = ctk.StringVar(value=self.config.get("last_bg_video", "Negro (Defecto)"))
+        self.musica_seleccionada = ctk.StringVar(value=self.config.get("last_music", "Sin música (Defecto)"))
+        self.modelo_piper_seleccionado = ctk.StringVar(value=self.config.get("last_piper_voice", ""))
+        
+        self.ui_elements = {}
+        self.ping_active_ia = False
+        self.ping_active_mic = False
+        self.ping_active_render = False
+
+        self.crear_menu()
+        self.setup_ui_global()
+        self._on_format_change()
+        self.traducir_interfaz()
+        
+        self.combo_fondo.set(self.config.get("last_bg_video", "Negro (Defecto)"))
+        self.combo_musica.set(self.config.get("last_music", "Sin música (Defecto)"))
+        self.procesar_cambio_musica(self.combo_musica.get())
+
+    def cargar_whisper(self):
+        if not hasattr(self, 'modelo_whisper_cacheado') or self.modelo_whisper_cacheado is None:
+            self.log(self.get_text("log_ia_trans"))
+            import whisper
+            self.modelo_whisper_cacheado = whisper.load_model("medium")
+        return self.modelo_whisper_cacheado
+
+    def formatear_tiempo(self, s):
+        try:
+            s = max(0, float(s))
+            h = int(s // 3600)
+            m = int((s % 3600) // 60)
+            sec = int(s % 60)
+            return f"{m:02d}:{sec:02d}"
+        except: return "00:00"
+
+    def lock_ui(self, state):
+        mode = "disabled" if state else "normal"
+        for b in [self.btn_render, self.btn_procesar, self.btn_video_guion, self.btn_media, self.btn_grabar, self.btn_inyectar, self.btn_pegar, self.btn_limpiar]:
+            try: b.configure(state=mode)
+            except: pass
+
+    def safefloat(self, var, d=0.0):
+        try: return float(var.get())
+        except: return d
+
+    def wrap_title_balanced(self, text):
+        if not text: return "", ""
+        words = text.split()
+        if not words: return "", ""
+        if len(words) == 1: return words[0], ""
+        mid_char = sum(len(w) for w in words) // 2
+        current_len = 0
+        split_idx = 0
+        for i, w in enumerate(words):
+            current_len += len(w)
+            if current_len >= mid_char:
+                split_idx = i + 1
+                break
+        return " ".join(words[:split_idx]).strip(), " ".join(words[split_idx:]).strip()
+
+    def tiene_audio(self, fp):
+        if not fp or not os.path.exists(fp): return False
+        if fp.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')): return False
+        try:
+            res = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', fp], capture_output=True, text=True, creationflags=0x08000000 if os.name == 'nt' else 0)
+            return 'audio' in res.stdout.strip().lower()
+        except: return False
+
+    def get_text(self, key): return LANGUAGES.get(self.idioma_actual, LANGUAGES["Español"]).get(key, key)
+
+    def guardar_volumenes(self):
+        self.config["vol_mem_voz"] = self.vol_voz.get()
+        self.config["vol_mem_intro"] = self.vol_mus_intro.get()
+        self.config["vol_mem_fondo"] = self.vol_mus_fondo.get()
+        self.config["vol_mem_cola"] = self.vol_mus_cola.get()
+        self.config["last_color_sub"] = self.color_cintillo_sub.get()
+        self.config["last_color_tit"] = self.color_cintillo.get()
+        self.guardar_config_sistema()
+
+    def log(self, mensaje):
+        ts = time.strftime("[%H:%M:%S]")
+        print(f"{ts} {mensaje}")
+        def _update_log():
+            try:
+                self.txt_log.configure(state="normal")
+                self.txt_log.insert("end", f"{ts} {mensaje}\n")
+                self.txt_log.see("end")
+                self.txt_log.configure(state="disabled")
+            except: pass
+        self.root.after(0, _update_log)
+
+    def obtener_duracion_audio(self, ruta):
+        if not ruta or not os.path.exists(ruta): return 0.0
+        if ruta.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+            try: return float(self.dur_foto.get())
+            except: return 5.0
+        try:
+            cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', ruta]
+            res = subprocess.run(cmd, capture_output=True, text=True, creationflags=0x08000000 if os.name == 'nt' else 0)
+            return float(res.stdout) if res.stdout else 0.0
+        except Exception as e:
+            self.log(f"⚠️ Aviso duracion audio: {e}")
+            return 0.0
+
+    def _on_ui_change(self, *args): 
+        self.config["last_bg_video"] = self.fondo_seleccionado.get()
+        self.config["last_music"] = self.musica_seleccionada.get()
+        self.guardar_volumenes()
+        self.actualizar_monitor_estatico()
+
+    def _on_format_change(self, *args):
+        fmt = "logos_pos_9_16" if self.formato_video.get() == "9:16" else "logos_pos_16_9"
+        for pos in ["TL", "TR", "BL", "BR"]:
+            self.logos[pos]["rel_x"] = self.config[fmt][pos]["rel_x"]
+            self.logos[pos]["rel_y"] = self.config[fmt][pos]["rel_y"]
+        self._check_title_length()
+        try:
+            self.dyn_frame.grid_columnconfigure(0, weight=0)
+            self.dyn_frame.grid_columnconfigure(1, weight=0)
+            self.dyn_frame.grid_rowconfigure(0, weight=0)
+            self.dyn_frame.grid_rowconfigure(1, weight=0)
+            self.col_der_top.grid_forget()
+            self.col_der_bot.grid_forget()
+            
+            if self.formato_video.get() == "16:9":
+                self.dyn_frame.grid_columnconfigure(0, weight=1)
+                self.dyn_frame.grid_rowconfigure(0, weight=75) 
+                self.dyn_frame.grid_rowconfigure(1, weight=25) 
+                self.col_der_top.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
+                self.col_der_bot.grid(row=1, column=0, sticky="nsew")
+            else:
+                self.dyn_frame.grid_rowconfigure(0, weight=1)
+                self.dyn_frame.grid_columnconfigure(0, weight=70) 
+                self.dyn_frame.grid_columnconfigure(1, weight=30) 
+                self.col_der_top.grid(row=0, column=0, sticky="nsew", padx=(0, 10)) 
+                self.col_der_bot.grid(row=0, column=1, sticky="nsew")
+        except Exception as e: pass
+        self.actualizar_monitor_estatico()
+
+    def cambiar_idioma(self, nuevo_idioma):
+        if nuevo_idioma != self.idioma_actual:
+            old_lang = LANGUAGES.get(self.idioma_actual, LANGUAGES["Español"])
+            new_lang = LANGUAGES.get(nuevo_idioma, LANGUAGES["Español"])
+            idx_169 = 0 if self.encuadre_169.get() == old_lang.get("opt_100p", "100% Pantalla") else 1
+            e916 = self.encuadre_916.get()
+            idx_916 = 0 if e916 == old_lang.get("opt_100p", "100% Pantalla") else (1 if e916 == old_lang.get("opt_ajust", "Ajustado (Con aire)") else 2)
+            self.idioma_actual = nuevo_idioma
+            self.config["idioma_interfaz"] = nuevo_idioma
+            self.guardar_config_sistema()
+            self.traducir_interfaz()
+            try:
+                self.enc_169_combo.set([new_lang.get("opt_100p", "100% Pantalla"), new_lang.get("opt_red70", "Reducido 70%")][idx_169])
+                self.enc_916_combo.set([new_lang.get("opt_100p", "100% Pantalla"), new_lang.get("opt_ajust", "Ajustado (Con aire)"), new_lang.get("opt_reduc", "Reducido Proporcional")][idx_916])
+            except: pass
+            self.log(f"🌐 {self.get_text('lbl_traduccion')} {nuevo_idioma}.")
+
+    def traducir_interfaz(self):
+        t = LANGUAGES.get(self.idioma_actual, LANGUAGES["Español"])
+        for k, v in self.ui_elements.items():
+            if k in t:
+                try:
+                    if isinstance(v, ctk.CTkButton): v.configure(text=t[k])
+                    else: v.configure(text=t[k])
+                except: pass
+        try:
+            self.enc_169_combo.configure(values=[t.get("opt_100p", "100% Pantalla"), t.get("opt_red70", "Reducido 70%")])
+            self.enc_916_combo.configure(values=[t.get("opt_100p", "100% Pantalla"), t.get("opt_ajust", "Ajustado (Con aire)"), t.get("opt_reduc", "Reducido Proporcional")])
+        except: pass
+
+    def cargar_configuracion(self):
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, 'r', encoding='utf-8') as f: 
+                    loaded = json.load(f)
+                    for k in ["lista_logos", "lista_fondos", "lista_musicas", "output_final", "logos_pos_16_9", "logos_pos_9_16", "idioma_interfaz", "idioma_salida", "last_bg_video", "last_music", "last_piper_voice", "vol_mem_voz", "vol_mem_intro", "vol_mem_fondo", "vol_mem_cola", "last_color_tit", "last_color_sub"]:
+                        if k in loaded: self.config[k] = loaded[k]
+                    if "empresa_nombre" in loaded: self.config["empresa_nombre"] = loaded["empresa_nombre"]
+                    if "empresa_direccion" in loaded: self.config["empresa_direccion"] = loaded["empresa_direccion"]
+            except Exception as e: self.log(f"⚠️ Error al cargar configuración: {e}")
+        else: self.guardar_config_sistema()
+
+    def guardar_config_sistema(self):
+        try:
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f: json.dump(self.config, f, indent=4)
+        except Exception as e: self.log(f"⚠️ Error al guardar configuración: {e}")
+
+    def reiniciar_app(self):
+        self.guardar_config_sistema()
+        self.log("🔄 Reiniciando aplicación...")
+        self.root.after(500, lambda: os.execl(sys.executable, sys.executable, *sys.argv))
+
+    def crear_menu(self):
+        mb = tk.Menu(self.root)
+        self.root.config(menu=mb)
+        am = tk.Menu(mb, tearoff=0, bg="#222", fg="white", activebackground=self.config["accent_red"])
+        mb.add_cascade(label="Archivo", menu=am)
+        am.add_command(label="📂 Abrir Proyecto (.as)", command=self.abrir_proyecto)
+        am.add_command(label="💾 Guardar Proyecto (.as)", command=self.guardar_proyecto)
+        am.add_separator()
+        am.add_command(label="🔄 Reiniciar y Guardar", command=self.reiniciar_app)
+        am.add_separator()
+        am.add_command(label="❌ Salir", command=self.root.quit)
+
+    def guardar_proyecto(self):
+        archivo = filedialog.asksaveasfilename(defaultextension=".as", filetypes=[("Proyecto ASvideo", "*.as")], title="Guardar Proyecto")
+        if not archivo: return
+        datos = {
+            "noticia": self.txt_input.get("1.0", tk.END).strip(),
+            "titular_169": self.ent_titular_169.get().strip(),
+            "titular_916": self.ent_titular_916.get().strip(),
+            "guion": self.txt_guion.get("1.0", tk.END).strip(),
+            "media": [{"path": i["path"], "transicion": i.get("transicion", "Cortar"), "color": i.get("color", {}), "v_on": i.get("v_on", True), "a_on": i.get("a_on", True), "width": i.get("width", 1920), "height": i.get("height", 1080), "is_vid_vertical": i.get("is_vid_vertical", False)} for i in self.lista_media_obj],
+            "logos": {pos: self.logo_selecciones[pos].get() for pos in ["TL", "TR", "BL", "BR"]},
+            "fondo": self.fondo_seleccionado.get(),
+            "musica": self.musica_seleccionada.get(),
+            "idioma_salida": self.idioma_salida_guion.get()
+        }
+        try:
+            with open(archivo, 'w', encoding='utf-8') as archivo_out: json.dump(datos, archivo_out, indent=4)
+            self.log(f"💾 Proyecto guardado: {os.path.basename(archivo)}")
+        except Exception as e: self.log(f"❌ Error al guardar: {e}")
+
+    def abrir_proyecto(self):
+        archivo = filedialog.askopenfilename(defaultextension=".as", filetypes=[("Proyecto ASvideo", "*.as")], title="Abrir Proyecto")
+        if not archivo: return
+        try:
+            with open(archivo, 'r', encoding='utf-8') as archivo_in: datos = json.load(archivo_in)
+            self.txt_input.delete("1.0", tk.END); self.txt_input.insert("1.0", datos.get("noticia", ""))
+            self.ent_titular_169.delete(0, tk.END); self.ent_titular_169.insert(0, datos.get("titular_169", datos.get("titular", "")))
+            self.ent_titular_916.delete(0, tk.END); self.ent_titular_916.insert(0, datos.get("titular_916", datos.get("titular", "")))
+            self.txt_guion.delete("1.0", tk.END); self.txt_guion.insert("1.0", datos.get("guion", ""))
+            if "logos" in datos:
+                for pos, val in datos["logos"].items():
+                    if val in self.config["lista_logos"]: self.logo_selecciones[pos].set(val)
+            if datos.get("fondo") in self.config["lista_fondos"]: self.fondo_seleccionado.set(datos.get("fondo"))
+            if datos.get("musica") in self.config["lista_musicas"]: self.musica_seleccionada.set(datos.get("musica"))
+            if "idioma_salida" in datos: self.idioma_salida_guion.set(datos["idioma_salida"])
+            self.procesar_cambio_musica(self.musica_seleccionada.get())
+            self.lista_media_obj.clear()
+            self.indice_media_seleccionado = -1
+            for m_data in datos.get("media", []):
+                path = m_data if isinstance(m_data, str) else m_data.get("path", "")
+                trans = "Cortar"
+                col = m_data.get("color", {"b": 0.0, "c": 1.0, "s": 1.0, "sh": 0}) if isinstance(m_data, dict) else {"b": 0.0, "c": 1.0, "s": 1.0, "sh": 0}
+                v_on = m_data.get("v_on", True) if isinstance(m_data, dict) else True
+                a_on = m_data.get("a_on", True) if isinstance(m_data, dict) else True
+                w_p = m_data.get("width", 1920) if isinstance(m_data, dict) else 1920
+                h_p = m_data.get("height", 1080) if isinstance(m_data, dict) else 1080
+                is_v = m_data.get("is_vid_vertical", False) if isinstance(m_data, dict) else False
+                if os.path.exists(path):
+                    is_vid = path.lower().endswith(('.mp4', '.mov', '.avi', '.mkv', '.webm'))
+                    dur = self.obtener_duracion_audio(path) if is_vid or path.lower().endswith(('.mp3','.wav','.m4a','.aac','.ogg','.flac', '.jpg', '.jpeg', '.png', '.webp')) else 5.0
+                    pil_img = self.generar_miniatura_pil(path)
+                    tk_img = ImageTk.PhotoImage(pil_img)
+                    self.lista_media_obj.append({"path": path, "thumb": tk_img, "is_video": is_vid, "duration": dur if dur > 0 else 5.0, "t_in": 0.0, "t_out": dur if dur > 0 else 5.0, "nombre": os.path.basename(path), "transicion": trans, "color": col, "v_on": v_on, "a_on": a_on, "width": w_p, "height": h_p, "is_vid_vertical": is_v})
+            self.refrescar_galeria()
+            self.actualizar_monitor_estatico()
+            self.log(f"📂 Proyecto cargado.")
+        except Exception as e: self.log(f"❌ Error al abrir: {e}")
+
+    def aplicar_menu_contextual(self, widget):
+        menu = tk.Menu(widget, tearoff=0, bg="#222", fg="white", activebackground=self.config["accent_red"], font=("Segoe UI", 10))
+        menu.add_command(label="✂️ Cortar", command=lambda: widget.event_generate("<<Cut>>"))
+        menu.add_command(label="📋 Copiar", command=lambda: widget.event_generate("<<Copy>>"))
+        menu.add_command(label="📋 Pegar", command=lambda: widget.event_generate("<<Paste>>"))
+        def mostrar_menu(event):
+            try: menu.tk_popup(event.x_root, event.y_root)
+            finally: menu.grab_release()
+        widget.bind("<Button-3>", mostrar_menu)
+
+    def draw_led(self, canvas, x, y, label_text, led_color):
+        led_id = canvas.create_oval(x, y, x+14, y+14, fill=led_color, outline="#111", width=2)
+        canvas.create_text(x+24, y+7, text=label_text, fill="#E0E0E0", font=("Segoe UI", 10, "bold"), anchor="w")
+        return led_id
+
+    def set_led(self, led_id, color):
+        self.canvas_telemetry.itemconfig(led_id, fill=color)
+
+    def _loop_ping(self, led_id, color_base, color_brillo, flag_name):
+        if not getattr(self, flag_name, False):
+            self.canvas_telemetry.itemconfig(led_id, fill=color_base)
+            return
+        current_fill = self.canvas_telemetry.itemcget(led_id, "fill")
+        next_fill = color_brillo if current_fill == color_base else color_base
+        self.canvas_telemetry.itemconfig(led_id, fill=next_fill)
+        self.root.after(400, lambda: self._loop_ping(led_id, color_base, color_brillo, flag_name))
+
+    def iniciar_ping(self, led_id, color_base, color_brillo, flag_name):
+        setattr(self, flag_name, True)
+        self._loop_ping(led_id, color_base, color_brillo, flag_name)
+
+    def detener_ping(self, led_id, color_base, flag_name):
+        setattr(self, flag_name, False)
+        self.canvas_telemetry.itemconfig(led_id, fill=color_base)
+
+    def obtener_voces_piper(self):
+        try:
+            voces = [f for f in os.listdir(folder_path) if f.endswith('.onnx')]
+            if not voces: return ["es_ES-mls_10246-low.onnx"]
+            return voces
+        except Exception as e:
+            self.log(f"⚠️ Error al obtener voces: {e}")
+            return ["es_ES-mls_10246-low.onnx"]
+
+    def verificar_entorno(self):
+        self.log("💡 [TELEMETRÍA] Modo NLE Multicanal. Motor Piper TTS.")
+        try:
+            if requests.get(self.config["ollama_check"], timeout=3).ok: 
+                self.status_label.configure(text="IA EN LÍNEA", text_color="#4ade80")
+                self.log("✅ IA conectada y lista.")
+            else: raise Exception("Status no OK")
+        except Exception as e: 
+            self.status_label.configure(text="IA OFFLINE", text_color="yellow")
+            self.log(f"⚠️ Aviso: IA Offline. {e}")
+
+    def agregar_nuevo_fondo(self):
+        a = filedialog.askopenfilename(title="Seleccionar Fondo", filetypes=[("Media", "*.mp4;*.mov;*.jpg;*.png;*.webp;*.gif"), ("Todos", "*.*")])
+        if a:
+            n = os.path.splitext(os.path.basename(a))[0]
+            self.config["lista_fondos"][n] = a
+            self.guardar_config_sistema()
+            self.combo_fondo.configure(values=list(self.config["lista_fondos"].keys()))
+            self.fondo_seleccionado.set(n)
+            self.log("✅ Fondo añadido a la lista global.")
+            self.actualizar_monitor_estatico()
+
+    def eliminar_fondo_actual(self):
+        fondo_a_borrar = self.fondo_seleccionado.get()
+        if fondo_a_borrar == "Negro (Defecto)":
+            messagebox.showwarning("Aviso", "No puedes borrar el fondo por defecto.")
+            return
+        if messagebox.askyesno("Confirmar", f"¿Eliminar el fondo '{fondo_a_borrar}' de la lista global?"):
+            del self.config["lista_fondos"][fondo_a_borrar]
+            self.guardar_config_sistema()
+            self.combo_fondo.configure(values=list(self.config["lista_fondos"].keys()))
+            self.fondo_seleccionado.set("Negro (Defecto)")
+            self.log(f"🗑️ Fondo '{fondo_a_borrar}' eliminado.")
+            self.actualizar_monitor_estatico()
+
+    def agregar_nueva_musica(self):
+        a = filedialog.askopenfilename(title="Seleccionar Música", filetypes=[("Audio", "*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac"), ("Todos", "*.*")])
+        if a:
+            n = os.path.splitext(os.path.basename(a))[0]
+            self.config["lista_musicas"][n] = a
+            self.guardar_config_sistema()
+            self.combo_musica.configure(values=list(self.config["lista_musicas"].keys()))
+            self.musica_seleccionada.set(n)
+            self.log("✅ Música añadida a la lista global.")
+            self.procesar_cambio_musica(n)
+
+    def eliminar_musica_actual(self):
+        musica_a_borrar = self.musica_seleccionada.get()
+        if musica_a_borrar == "Sin música (Defecto)":
+            messagebox.showwarning("Aviso", "No puedes borrar la opción por defecto.")
+            return
+        if messagebox.askyesno("Confirmar", f"¿Eliminar la música '{musica_a_borrar}' de la lista global?"):
+            del self.config["lista_musicas"][musica_a_borrar]
+            self.guardar_config_sistema()
+            self.combo_musica.configure(values=list(self.config["lista_musicas"].keys()))
+            self.musica_seleccionada.set("Sin música (Defecto)")
+            self.log(f"🗑️ Música '{musica_a_borrar}' eliminada.")
+            self.procesar_cambio_musica("Sin música (Defecto)")
+
+    def procesar_cambio_musica(self, choice):
+        self.config["last_music"] = choice
+        self.guardar_config_sistema()
+        p = self.config["lista_musicas"].get(choice, "")
+        self.detener_musica_player()
+        if p and os.path.exists(p):
+            self.ruta_cortina_musical = p
+            self.duracion_musica = self.obtener_duracion_audio(p)
+            self.scale_timeline.configure(to=self.duracion_musica)
+            self.tiempo_actual_musica.set(0.0)
+            self.lbl_tiempo.configure(text=f"00:00 / {self.formatear_tiempo(self.duracion_musica)}")
+        else:
+            self.ruta_cortina_musical = None
+            self.duracion_musica = 0.0
+            self.lbl_tiempo.configure(text="00:00 / 00:00")
+
+    def agregar_nuevo_logo(self):
+        p = filedialog.askopenfilename(title="Seleccionar Logo", filetypes=[("PNG/WEBP Transparente", "*.png;*.webp"), ("Todos", "*.*")])
+        if p: 
+            n = os.path.splitext(os.path.basename(p))[0]
+            self.config["lista_logos"][n] = p
+            self.guardar_config_sistema()
+            self.combo_logo_unico.configure(values=list(self.config["lista_logos"].keys()))
+            self.logo_actual_var.set(n)
+            self.logo_selecciones[self.esquinas_map[self.esquina_seleccionada.get()]].set(n)
+            self.log("✅ Logo añadido al sistema.")
+            self.actualizar_monitor_estatico()
+            
+    def eliminar_logo_actual(self):
+        logo_a_borrar = self.logo_actual_var.get()
+        if logo_a_borrar in ["Ninguno", "Logo Principal"]:
+            messagebox.showwarning("Aviso", "No puedes borrar los logos del sistema por defecto.")
+            return
+        if messagebox.askyesno("Confirmar", f"¿Eliminar el logo '{logo_a_borrar}' de la lista global?"):
+            del self.config["lista_logos"][logo_a_borrar]
+            self.guardar_config_sistema()
+            self.combo_logo_unico.configure(values=list(self.config["lista_logos"].keys()))
+            self.logo_actual_var.set("Ninguno")
+            self.logo_selecciones[self.esquinas_map[self.esquina_seleccionada.get()]].set("Ninguno")
+            self.log(f"🗑️ Logo '{logo_a_borrar}' eliminado.")
+            self.actualizar_monitor_estatico()
+
+    def setup_ui_global(self):
+        header = ctk.CTkFrame(self.root, height=60, corner_radius=0, fg_color=self.config["bg_deep"])
+        header.pack(fill="x", side="top")
+        tf = ctk.CTkFrame(header, fg_color="transparent")
+        tf.pack(side="left", pady=5, padx=25)
+        ctk.CTkLabel(tf, text=self.config["empresa_nombre"], font=("Oswald", 26, "bold"), text_color=self.config["accent_blue"]).pack(anchor="w")
+        ctk.CTkLabel(tf, text=self.config["empresa_direccion"], font=("Arial", 16, "bold"), text_color="#888").pack(anchor="w")
+        telemetry_frame = ctk.CTkFrame(header, fg_color="transparent")
+        telemetry_frame.pack(side="right", padx=25, fill="y")
+        lbl_tr = ctk.CTkLabel(telemetry_frame, text="🌍")
+        lbl_tr.pack(side="left", padx=(0,5))
+        self.ui_elements["lbl_traduccion_icon"] = lbl_tr
+        self.combo_lang = ctk.CTkComboBox(telemetry_frame, values=list(LANGUAGES.keys()), command=self.cambiar_idioma, width=150)
+        self.combo_lang.set(self.idioma_actual)
+        self.combo_lang.pack(side="left", padx=(0, 20))
+        self.status_label = ctk.CTkLabel(telemetry_frame, text="SISTEMA EN INICIO...", font=("Consolas", 12, "bold"), text_color="#aaaaaa")
+        self.status_label.pack(side="left", padx=20)
+        self.ui_elements["lbl_sistema_inicio"] = self.status_label
+        self.main_container = tk.Frame(self.root, bg=self.config["bg_deep"])
+        self.main_container.pack(fill="both", expand=True)
+        self.build_mode_auto()
+        self.verificar_entorno()
+
+    def build_mode_auto(self):
+        bg_panel = self.config["bg_panel"]
+        bg_main = self.config["bg_deep"]
+        
+        mp = tk.PanedWindow(self.main_container, orient=tk.HORIZONTAL, opaqueresize=True, sashwidth=8, bg=bg_main, bd=0, relief="flat", cursor="arrow")
+        mp.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        col_izq = ctk.CTkFrame(mp, fg_color="transparent")
+        col_cen = ctk.CTkFrame(mp, fg_color="transparent")
+        self.col_der = ctk.CTkFrame(mp, fg_color="transparent")
+
+        mp.add(col_izq, minsize=420, stretch="never")
+        mp.add(col_cen, minsize=500, stretch="always")
+        mp.add(self.col_der, minsize=400, stretch="never")
+
+        def create_volumetric_panel(parent, title_key):
+            panel = ctk.CTkFrame(parent, fg_color=bg_panel, corner_radius=12, border_width=1, border_color="#2A2A2A")
+            header = ctk.CTkFrame(panel, fg_color="#1F1F1F", corner_radius=12)
+            header.pack(fill="x", padx=2, pady=2)
+            lbl = ctk.CTkLabel(header, text=self.get_text(title_key), font=("Segoe UI", 12, "bold"), text_color=self.config["accent_blue"])
+            lbl.pack(anchor="w", padx=15, pady=6)
+            self.ui_elements[title_key] = lbl
+            return panel
+
+        p_ia = create_volumetric_panel(col_izq, "p1")
+        p_ia.pack(fill="x", pady=5)
+        
+        f_ia_target = ctk.CTkFrame(p_ia, fg_color="transparent")
+        f_ia_target.pack(fill="x", padx=15, pady=(5,0))
+        lbl_tr_opt = ctk.CTkLabel(f_ia_target, text=self.get_text("lbl_traduccion"), text_color="#00BFFF", font=("Segoe UI", 11, "bold"))
+        lbl_tr_opt.pack(side="left")
+        self.ui_elements["lbl_traduccion_opt"] = lbl_tr_opt
+        self.combo_target_lang = ctk.CTkComboBox(f_ia_target, variable=self.idioma_salida_guion, values=list(LANGUAGES.keys()), width=150)
+        self.combo_target_lang.pack(side="left", padx=5)
+
+        f_ia_dur = ctk.CTkFrame(p_ia, fg_color="transparent")
+        f_ia_dur.pack(fill="x", padx=15, pady=(5,0))
+        lbl_dur = ctk.CTkLabel(f_ia_dur, text=self.get_text("lbl_duracion"), font=("Segoe UI", 11, "bold"), text_color="#ccc")
+        lbl_dur.pack(side="left")
+        self.ui_elements["lbl_duracion"] = lbl_dur
+        ctk.CTkEntry(f_ia_dur, textvariable=self.duracion_guion_ia, width=60, justify="center", font=("Consolas", 12)).pack(side="left", padx=10)
+
+        bt_ia = ctk.CTkFrame(p_ia, fg_color="transparent")
+        bt_ia.pack(fill="x", padx=15, pady=5)
+        
+        self.btn_procesar = ctk.CTkButton(bt_ia, text=self.get_text("btn_procesar"), height=36, font=("Segoe UI", 12, "bold"), fg_color=self.config["accent_blue"], command=self.start_ia_thread)
+        self.btn_procesar.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.ui_elements["btn_procesar"] = self.btn_procesar
+        
+        self.btn_video_guion = ctk.CTkButton(bt_ia, text=self.get_text("btn_video_guion"), height=36, font=("Segoe UI", 12, "bold"), fg_color="#ffcc00", text_color="black", hover_color="#e6b800", command=self.importar_video_a_guion)
+        self.btn_video_guion.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.ui_elements["btn_video_guion"] = self.btn_video_guion
+
+        ctk.CTkButton(bt_ia, text="📋", width=40, fg_color="#333", font=("Segoe UI", 11, "bold"), command=lambda: self.txt_input.insert("1.0", self.root.clipboard_get())).pack(side="right", padx=2)
+        ctk.CTkButton(bt_ia, text="🗑️", width=40, fg_color="#333", font=("Segoe UI", 11, "bold"), command=lambda: self.txt_input.delete("1.0", tk.END)).pack(side="right", padx=2)
+        
+        self.txt_input = scrolledtext.ScrolledText(p_ia, bg="#0A0A0A", fg="white", height=6, bd=0, font=("Arial", 14), padx=10, pady=10, wrap=tk.WORD, insertbackground="white")
+        self.txt_input.pack(fill="x", padx=15, pady=(5, 15))
+        self.aplicar_menu_contextual(self.txt_input)
+
+        p_ed = create_volumetric_panel(col_izq, "p2")
+        p_ed.pack(fill="both", expand=True, pady=5)
+        
+        fr_tit_169 = ctk.CTkFrame(p_ed, fg_color="transparent")
+        fr_tit_169.pack(fill="x", padx=15, pady=(5,0))
+        lbl_titular_169 = ctk.CTkLabel(fr_tit_169, text=self.get_text("lbl_titular_169"), font=("Segoe UI", 10, "bold"), text_color="#888")
+        lbl_titular_169.pack(side="left")
+        self.ui_elements["lbl_titular_169"] = lbl_titular_169
+        
+        btn_f_tit = ctk.CTkFrame(fr_tit_169, fg_color="transparent")
+        btn_f_tit.pack(side="right", padx=5)
+        
+        self.btn_grabar = ctk.CTkButton(btn_f_tit, text="🔴 GRABAR", width=80, height=28, font=("Segoe UI", 10, "bold"), border_width=1, border_color="#500620", fg_color=self.config["accent_red"], command=self.toggle_grabacion)
+        self.btn_grabar.pack(side="left", padx=2)
+        self.ui_elements["btn_grabar"] = self.btn_grabar
+        
+        self.btn_inyectar = ctk.CTkButton(btn_f_tit, text=self.get_text("btn_inyectar"), width=120, height=28, font=("Segoe UI", 10, "bold"), fg_color="#2e7d32", command=self.insertar_comando_audio)
+        self.btn_inyectar.pack(side="left", padx=2)
+        self.ui_elements["btn_inyectar"] = self.btn_inyectar
+
+        self.btn_subs_ent = ctk.CTkButton(btn_f_tit, text="💬 SUBS ENT", width=90, height=28, fg_color="#005b9f", font=("Segoe UI", 10, "bold"), command=self.gestionar_subs_entrevistas)
+        self.btn_subs_ent.pack(side="left", padx=2)
+
+        self.btn_pegar = ctk.CTkButton(btn_f_tit, text=self.get_text("btn_pegar"), width=70, height=28, fg_color="#333", font=("Segoe UI", 10, "bold"), command=lambda: [self.txt_guion.insert(tk.END, self.root.clipboard_get()), self.root.after(50, lambda: self._auto_generar_titular(self.txt_guion.get("1.0", tk.END)))])
+        self.btn_pegar.pack(side="left", padx=2)
+        self.ui_elements["btn_pegar"] = self.btn_pegar
+
+        self.btn_limpiar = ctk.CTkButton(btn_f_tit, text=self.get_text("btn_limpiar"), width=70, height=28, fg_color="#333", font=("Segoe UI", 10, "bold"), command=lambda: self.txt_guion.delete("1.0", tk.END))
+        self.btn_limpiar.pack(side="left")
+        self.ui_elements["btn_limpiar"] = self.btn_limpiar
+        
+        self.ent_titular_169 = ctk.CTkEntry(p_ed, font=("Arial", 14, "bold"), fg_color="#0A0A0A", border_color="#333", border_width=1, text_color="white", height=32)
+        self.ent_titular_169.pack(fill="x", padx=15, pady=(2, 5))
+        self.ent_titular_169.bind("<KeyRelease>", self._check_title_length)
+        
+        fr_tit_916 = ctk.CTkFrame(p_ed, fg_color="transparent")
+        fr_tit_916.pack(fill="x", padx=15, pady=(2,0))
+        lbl_titular_916 = ctk.CTkLabel(fr_tit_916, text=self.get_text("lbl_titular_916"), font=("Segoe UI", 10, "bold"), text_color="#888")
+        lbl_titular_916.pack(side="left")
+        self.ui_elements["lbl_titular_916"] = lbl_titular_916
+        
+        self.ent_titular_916 = ctk.CTkEntry(p_ed, font=("Arial", 14, "bold"), fg_color="#0A0A0A", border_color="#333", border_width=1, text_color="white", height=32)
+        self.ent_titular_916.pack(fill="x", padx=15, pady=(2, 5))
+        self.ent_titular_916.bind("<KeyRelease>", self._check_title_length)
+        
+        hg = ctk.CTkFrame(p_ed, fg_color="transparent")
+        hg.pack(fill="x", padx=15, pady=5)
+        
+        lbl_ia = ctk.CTkRadioButton(hg, text=self.get_text("lbl_ia"), variable=self.fuente_voz, value="IA", font=("Segoe UI", 11, "bold"))
+        lbl_ia.pack(side="left", padx=(0, 5))
+        self.ui_elements["lbl_ia"] = lbl_ia
+        
+        lbl_mic = ctk.CTkRadioButton(hg, text=self.get_text("lbl_mic"), variable=self.fuente_voz, value="MIC", font=("Segoe UI", 11, "bold"))
+        lbl_mic.pack(side="left", padx=(0, 5))
+        self.ui_elements["lbl_mic"] = lbl_mic
+        
+        self.combo_piper = ctk.CTkComboBox(hg, variable=self.modelo_piper_seleccionado, values=self.obtener_voces_piper(), width=250)
+        if self.config.get("last_piper_voice"): self.combo_piper.set(self.config["last_piper_voice"])
+        self.combo_piper.pack(side="left", padx=(10, 5))
+        
+        def save_piper(*args):
+            self.config["last_piper_voice"] = self.modelo_piper_seleccionado.get()
+            self.guardar_config_sistema()
+            
+        self.modelo_piper_seleccionado.trace_add("write", save_piper)
+        
+        self.txt_guion = scrolledtext.ScrolledText(p_ed, bg="#0A0A0A", fg="#ddd", height=10, insertbackground="white", bd=0, font=("Arial", 14), padx=10, pady=10, wrap=tk.WORD)
+        self.txt_guion.pack(fill="both", expand=True, padx=15, pady=(5, 10))
+        self.txt_guion.bind("<<Paste>>", lambda e: self.root.after(50, lambda: self._auto_generar_titular(self.txt_guion.get("1.0", tk.END))))
+        self.aplicar_menu_contextual(self.txt_guion)
+        
+        dsp_frame = ctk.CTkFrame(p_ed, fg_color="#0F0F0F", corner_radius=8, border_width=1, border_color="#222")
+        dsp_frame.pack(fill="x", padx=15, pady=(0, 15), ipady=5)
+        
+        fr_t = ctk.CTkFrame(dsp_frame, fg_color="transparent")
+        fr_t.pack(side="left", fill="x", expand=True, padx=10)
+        
+        lbl_pitch = ctk.CTkLabel(fr_t, text=self.get_text("lbl_pitch"), font=("Segoe UI", 10), text_color="#ccc")
+        lbl_pitch.pack(side="left")
+        self.ui_elements["lbl_pitch"] = lbl_pitch
+        lbl_pitch_val = ctk.CTkLabel(fr_t, text="0.00", font=("Consolas", 10), text_color=self.config["accent_blue"])
+        lbl_pitch_val.pack(side="left", padx=(5,0))
+        
+        def update_pitch_lbl(*args): 
+            lbl_pitch_val.configure(text=f"{self.voz_pitch.get():.2f}")
+            
+        self.voz_pitch.trace_add("write", update_pitch_lbl)
+        ctk.CTkSlider(fr_t, from_=-4.0, to=4.0, variable=self.voz_pitch, width=60, button_color=self.config["accent_blue"]).pack(side="left", padx=5)
+        
+        fr_b = ctk.CTkFrame(dsp_frame, fg_color="transparent")
+        fr_b.pack(side="right", fill="x", expand=True, padx=10)
+        lbl_boost = ctk.CTkLabel(fr_b, text=self.get_text("lbl_boost"), font=("Segoe UI", 10), text_color="#ccc")
+        lbl_boost.pack(side="left")
+        self.ui_elements["lbl_boost"] = lbl_boost
+        ctk.CTkSlider(fr_b, from_=0.0, to=12.0, variable=self.voz_boost, width=60, button_color=self.config["accent_red"]).pack(side="left", padx=5)
+        
+        def limpiar_dsp():
+            self.voz_pitch.set(0.0)
+            self.voz_denoise.set(False)
+            self.voz_compresor.set(False)
+            self.voz_boost.set(0.0)
+            self.log("🧹 DSP Limpiado.")
+            
+        btn_limpiar_dsp = ctk.CTkButton(dsp_frame, text=self.get_text("btn_limpiar_dsp"), width=120, height=28, font=("Segoe UI", 10, "bold"), fg_color="#333", command=limpiar_dsp)
+        btn_limpiar_dsp.pack(side="right", padx=10)
+        self.ui_elements["btn_limpiar_dsp"] = btn_limpiar_dsp
+        sw_denoise = ctk.CTkSwitch(dsp_frame, text=self.get_text("lbl_denoise"), variable=self.voz_denoise, font=("Segoe UI", 10), switch_width=35)
+        sw_denoise.pack(side="right", padx=5)
+        self.ui_elements["lbl_denoise"] = sw_denoise
+        sw_comp = ctk.CTkSwitch(dsp_frame, text=self.get_text("lbl_comp"), variable=self.voz_compresor, font=("Segoe UI", 10), switch_width=35)
+        sw_comp.pack(side="right", padx=5)
+        self.ui_elements["lbl_comp"] = sw_comp
+
+        led_frame = tk.Frame(col_cen, bg=bg_main)
+        led_frame.pack(fill="x", pady=(0, 5))
+        self.canvas_telemetry = tk.Canvas(led_frame, width=320, height=30, bg=bg_main, highlightthickness=0)
+        self.canvas_telemetry.pack()
+        self.led_ia = self.draw_led(self.canvas_telemetry, 10, 8, "MOTOR IA", "#333333")
+        self.led_mic = self.draw_led(self.canvas_telemetry, 110, 8, "AUDIO / MIC", "#333333")
+        self.led_render = self.draw_led(self.canvas_telemetry, 220, 8, "RENDER NLE", "#333333")
+
+        cen_paned = tk.PanedWindow(col_cen, orient=tk.VERTICAL, opaqueresize=True, sashwidth=8, bg=bg_main, bd=0, relief="flat", cursor="arrow")
+        cen_paned.pack(fill="both", expand=True, padx=2)
+
+        p_med = create_volumetric_panel(cen_paned, "p3")
+        cen_paned.add(p_med, minsize=200, stretch="always")
+        
+        t_med = ctk.CTkFrame(p_med, fg_color="transparent")
+        t_med.pack(fill="x", padx=15, pady=5)
+        
+        self.btn_media = ctk.CTkButton(t_med, text=self.get_text("btn_media"), fg_color="#2e7d32", font=("Segoe UI", 11, "bold"), command=self.agregar_media)
+        self.btn_media.pack(side="left", padx=(0, 10))
+        self.ui_elements["btn_media"] = self.btn_media
+        
+        lbl_fondo_sel = ctk.CTkLabel(t_med, text=self.get_text("lbl_fondo_sel"), font=("Segoe UI", 11, "bold"))
+        lbl_fondo_sel.pack(side="left", padx=(5,2))
+        self.ui_elements["lbl_fondo_sel"] = lbl_fondo_sel
+        
+        self.combo_fondo = ctk.CTkComboBox(t_med, variable=self.fondo_seleccionado, values=list(self.config["lista_fondos"].keys()), state="readonly", width=110, command=self._on_ui_change)
+        self.combo_fondo.pack(side="left", padx=2)
+        
+        ctk.CTkButton(t_med, text="➕", width=30, fg_color="#333", font=("Segoe UI", 14, "bold"), command=self.agregar_nuevo_fondo).pack(side="left", padx=2)
+        ctk.CTkButton(t_med, text="🗑️", width=30, fg_color="#900C3F", font=("Segoe UI", 14, "bold"), command=self.eliminar_fondo_actual).pack(side="left", padx=2)
+
+        media_wrapper = ctk.CTkFrame(p_med, fg_color="#0A0A0A", corner_radius=8, border_width=1, border_color="#333")
+        media_wrapper.pack(fill="both", expand=True, padx=15, pady=(5, 15))
+        
+        self.canvas_media = tk.Canvas(media_wrapper, bg="#0A0A0A", bd=0, highlightthickness=0)
+        self.scrollbar_media = ctk.CTkScrollbar(media_wrapper, orientation="horizontal", command=self.canvas_media.xview)
+        self.scrollable_frame = tk.Frame(self.canvas_media, bg="#0A0A0A")
+        self.scrollable_frame.bind("<Configure>", lambda e: self.canvas_media.configure(scrollregion=self.canvas_media.bbox("all")))
+        self.canvas_media.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas_media.configure(xscrollcommand=self.scrollbar_media.set)
+        self.canvas_media.pack(side="top", fill="both", expand=True, padx=5, pady=5)
+        self.scrollbar_media.pack(side="bottom", fill="x", padx=5, pady=(0,5))
+        
+        lf = ctk.CTkFrame(p_med, fg_color="#151515", corner_radius=8, border_width=1, border_color="#333")
+        lf.pack(fill="x", padx=15, pady=(0,15), ipady=5)
+        lbl_lab_vis = ctk.CTkLabel(lf, text=self.get_text("lbl_lab_vis"), font=("Segoe UI", 11, "bold"), text_color=self.config["accent_blue"])
+        lbl_lab_vis.pack(side="left", padx=15)
+        self.ui_elements["lbl_lab_vis"] = lbl_lab_vis
+        
+        btn_recortar = ctk.CTkButton(lf, text=self.get_text("btn_recortar"), fg_color="#ffcc00", text_color="black", hover_color="#e6b800", command=self.abrir_recortador_visual)
+        btn_recortar.pack(side="left", padx=5)
+        self.ui_elements["btn_recortar"] = btn_recortar
+
+        btn_color = ctk.CTkButton(lf, text=self.get_text("btn_color"), fg_color="#660099", text_color="white", hover_color="#800080", command=self.abrir_laboratorio_color)
+        btn_color.pack(side="left", padx=5)
+        self.ui_elements["btn_color"] = btn_color
+
+        p_aud = create_volumetric_panel(cen_paned, "p4")
+        cen_paned.add(p_aud, minsize=250, stretch="always")
+        
+        m_fr = ctk.CTkFrame(p_aud, fg_color="transparent")
+        m_fr.pack(fill="x", padx=15, pady=10)
+        lbl_mus_glob = ctk.CTkLabel(m_fr, text=self.get_text("lbl_mus_glob"), font=("Segoe UI", 11, "bold"))
+        lbl_mus_glob.pack(side="left", padx=(5,2))
+        self.ui_elements["lbl_mus_glob"] = lbl_mus_glob
+        self.combo_musica = ctk.CTkComboBox(m_fr, variable=self.musica_seleccionada, values=list(self.config["lista_musicas"].keys()), state="readonly", width=170, command=self.procesar_cambio_musica)
+        self.combo_musica.pack(side="left", padx=2)
+        ctk.CTkButton(m_fr, text="➕", width=30, fg_color="#333", font=("Segoe UI", 14, "bold"), command=self.agregar_nueva_musica).pack(side="left", padx=2)
+        ctk.CTkButton(m_fr, text="🗑️", width=30, fg_color="#900C3F", font=("Segoe UI", 14, "bold"), command=self.eliminar_musica_actual).pack(side="left", padx=2)
+
+        p_fr = ctk.CTkFrame(p_aud, fg_color="#0F0F0F", corner_radius=10)
+        p_fr.pack(fill="x", padx=15, pady=5, ipady=5)
+        
+        self.btn_play_pause = ctk.CTkButton(p_fr, text=self.get_text("btn_play"), width=120, fg_color="#2e7d32", font=("Segoe UI", 11, "bold"), command=self.toggle_play_pause)
+        self.btn_play_pause.pack(side="left", padx=10, pady=5)
+        self.ui_elements["btn_play"] = self.btn_play_pause
+        
+        self.btn_stop = ctk.CTkButton(p_fr, text=self.get_text("btn_stop"), width=70, fg_color=self.config["accent_red"], font=("Segoe UI", 11, "bold"), command=self.detener_musica_player)
+        self.btn_stop.pack(side="left", padx=(0, 15), pady=5)
+        self.ui_elements["btn_stop"] = self.btn_stop
+        
+        self.lbl_tiempo = ctk.CTkLabel(p_fr, text="00:00 / 00:00", font=("Consolas", 14, "bold"), text_color=self.config["accent_blue"])
+        self.lbl_tiempo.pack(side="left", padx=(0, 15))
+        self.scale_timeline = ctk.CTkSlider(p_fr, from_=0, to=100, variable=self.tiempo_actual_musica, command=self.on_slider_scroll, button_color=self.config["accent_blue"])
+        self.scale_timeline.pack(side="left", fill="x", expand=True, padx=15)
+        self.scale_timeline.bind("<ButtonRelease-1>", self.on_slider_release)
+
+        sliders_box = ctk.CTkFrame(p_aud, fg_color="transparent")
+        sliders_box.pack(fill="x", padx=10, pady=10)
+        sliders_box.grid_columnconfigure((0,1,2,3), weight=1, uniform="vol")
+        
+        def create_volumetric_slider_grid(parent, key_text, variable, max_val, color, col_idx):
+            fr = ctk.CTkFrame(parent, fg_color="#181818", corner_radius=8, border_width=1, border_color="#2A2A2A")
+            fr.grid(row=0, column=col_idx, sticky="nsew", padx=5, pady=5)
+            tf = ctk.CTkFrame(fr, fg_color="transparent")
+            tf.pack(fill="x", padx=10, pady=(5,0))
+            lbl = ctk.CTkLabel(tf, text=self.get_text(key_text), font=("Segoe UI", 11, "bold"), text_color="#ccc")
+            lbl.pack(side="left")
+            self.ui_elements[key_text] = lbl
+            vl = ctk.CTkLabel(tf, text=f"{variable.get():.2f}", font=("Consolas", 11, "bold"), text_color=color)
+            vl.pack(side="right")
+            def update_lbl(*args): vl.configure(text=f"{variable.get():.2f}")
+            variable.trace_add("write", update_lbl)
+            ctk.CTkSlider(fr, from_=0.0, to=max_val, variable=variable, button_color=color, progress_color=color).pack(fill="x", padx=10, pady=10)
+            
+        create_volumetric_slider_grid(sliders_box, "lbl_voz", self.vol_voz, 2.0, "#ffcc00", 0)
+        create_volumetric_slider_grid(sliders_box, "lbl_intro", self.vol_mus_intro, 2.0, "#4ade80", 1)
+        create_volumetric_slider_grid(sliders_box, "lbl_fondo", self.vol_mus_fondo, 2.0, self.config["accent_blue"], 2)
+        create_volumetric_slider_grid(sliders_box, "lbl_cola", self.vol_mus_cola, 2.0, "#FF00FF", 3)
+
+        def cme(p, t_key, v, c):
+            f = ctk.CTkFrame(p, fg_color="transparent")
+            f.pack(side="left", padx=10, expand=True)
+            lbl = ctk.CTkLabel(f, text=self.get_text(t_key), font=("Segoe UI", 10, "bold"), text_color=c)
+            lbl.pack(side="top")
+            self.ui_elements[t_key] = lbl
+            ctk.CTkEntry(f, textvariable=v, width=60, justify="center", font=("Consolas", 12, "bold"), fg_color="#111", border_color="#444").pack(side="top")
+
+        tb1 = ctk.CTkFrame(p_aud, fg_color="transparent")
+        tb1.pack(fill="x", padx=15, pady=5)
+        cme(tb1, "lbl_mus_in", self.mus_inicio, "#00BFFF")
+        cme(tb1, "lbl_voz_ret", self.voz_retraso, "#ffcc00")
+        cme(tb1, "lbl_dur_cola", self.duracion_cola_mus, "#FF00FF")
+        
+        tb2 = ctk.CTkFrame(p_aud, fg_color="transparent")
+        tb2.pack(fill="x", padx=15, pady=5)
+        cme(tb2, "lbl_climax_in", self.mus_salto_climax, "#FF00FF")
+        cme(tb2, "lbl_fin_mus", self.mus_fin_climax, "#4ade80")
+        sw_climax = ctk.CTkSwitch(tb2, text=self.get_text("lbl_salto_climax"), variable=self.usar_climax_musica, font=("Segoe UI", 11, "bold"), progress_color=self.config["accent_red"])
+        sw_climax.pack(side="right", padx=15, pady=(10,0))
+        self.ui_elements["lbl_salto_climax"] = sw_climax
+
+        p_ren = create_volumetric_panel(self.col_der, "p5")
+        p_ren.pack(fill="x", expand=False, pady=5)
+        
+        fades_box = ctk.CTkFrame(p_ren, fg_color="#151515", corner_radius=8, border_width=1, border_color="#333")
+        fades_box.pack(fill="x", padx=15, pady=5, ipady=5)
+        fi_fr = ctk.CTkFrame(fades_box, fg_color="transparent")
+        fi_fr.pack(side="left", expand=True)
+        lbl_v_fades = ctk.CTkLabel(fi_fr, text=self.get_text("lbl_v_fades"), font=("Segoe UI", 10, "bold"), text_color="#aaa")
+        lbl_v_fades.pack(side="left")
+        self.ui_elements["lbl_v_fades"] = lbl_v_fades
+        ctk.CTkEntry(fi_fr, textvariable=self.vid_fadein, width=40, height=24, justify="center", fg_color="#222", border_width=0).pack(side="left", padx=2)
+        ctk.CTkEntry(fi_fr, textvariable=self.vid_fadeout, width=40, height=24, justify="center", fg_color="#222", border_width=0).pack(side="left", padx=2)
+        
+        fa_fr = ctk.CTkFrame(fades_box, fg_color="transparent")
+        fa_fr.pack(side="right", expand=True)
+        lbl_a_fades = ctk.CTkLabel(fa_fr, text=self.get_text("lbl_a_fades"), font=("Segoe UI", 10, "bold"), text_color="#aaa")
+        lbl_a_fades.pack(side="left", padx=(15,0))
+        self.ui_elements["lbl_a_fades"] = lbl_a_fades
+        ctk.CTkEntry(fa_fr, textvariable=self.aud_fadein, width=40, height=24, justify="center", fg_color="#222", border_width=0).pack(side="left", padx=2)
+        ctk.CTkEntry(fa_fr, textvariable=self.aud_fadeout, width=40, height=24, justify="center", fg_color="#222", border_width=0).pack(side="left", padx=2)
+
+        r_fmt = ctk.CTkFrame(p_ren, fg_color="transparent")
+        r_fmt.pack(fill="x", padx=15, pady=5)
+        rb_169 = ctk.CTkRadioButton(r_fmt, text=self.get_text("lbl_formato_16_9"), variable=self.formato_video, value="16:9", font=("Segoe UI", 12, "bold"), command=self._on_format_change)
+        rb_169.pack(side="left", padx=(0,15))
+        self.ui_elements["lbl_formato_16_9"] = rb_169
+        rb_916 = ctk.CTkRadioButton(r_fmt, text=self.get_text("lbl_formato_9_16"), variable=self.formato_video, value="9:16", font=("Segoe UI", 12, "bold"), command=self._on_format_change)
+        rb_916.pack(side="left")
+        self.ui_elements["lbl_formato_9_16"] = rb_916
+        
+        r_enc = ctk.CTkFrame(p_ren, fg_color="transparent")
+        r_enc.pack(fill="x", padx=15, pady=5)
+        self.enc_169_combo = ctk.CTkComboBox(r_enc, variable=self.encuadre_169, values=["100% Pantalla", "Reducido 70%"], width=130, command=self._on_format_change)
+        self.enc_169_combo.pack(side="left", padx=(0,10))
+        self.enc_916_combo = ctk.CTkComboBox(r_enc, variable=self.encuadre_916, values=["100% Pantalla", "Ajustado (Con aire)", "Reducido Proporcional"], width=160, command=self._on_format_change)
+        self.enc_916_combo.pack(side="left")
+
+        r_opt = ctk.CTkFrame(p_ren, fg_color="transparent")
+        r_opt.pack(fill="x", padx=15, pady=5)
+        lbl_dur_foto = ctk.CTkLabel(r_opt, text=self.get_text("lbl_dur_foto"), font=("Segoe UI", 11, "bold"), text_color=self.config["accent_blue"])
+        lbl_dur_foto.pack(side="left")
+        self.ui_elements["lbl_dur_foto"] = lbl_dur_foto
+        ctk.CTkEntry(r_opt, textvariable=self.dur_foto, width=50, justify="center", font=("Consolas", 12)).pack(side="left", padx=10)
+        sw_paneos = ctk.CTkSwitch(r_opt, text=self.get_text("sw_paneos"), variable=self.efecto_ken_burns, progress_color="#ffcc00", font=("Segoe UI", 11, "bold"))
+        sw_paneos.pack(side="left", padx=15)
+        self.ui_elements["sw_paneos"] = sw_paneos
+
+        r_sw = ctk.CTkFrame(p_ren, fg_color="transparent")
+        r_sw.pack(fill="x", padx=15, pady=10)
+        sw_cintillos = ctk.CTkSwitch(r_sw, text=self.get_text("sw_cintillos"), variable=self.incluir_textos, command=self._on_ui_change)
+        sw_cintillos.pack(side="left", padx=(0, 5))
+        self.ui_elements["sw_cintillos"] = sw_cintillos
+        sw_subs_ent = ctk.CTkSwitch(r_sw, text="Subs Entrevistas", variable=self.subtitular_entrevistas)
+        sw_subs_ent.pack(side="left", padx=(10, 5))
+        
+        f_cols = ctk.CTkFrame(p_ren, fg_color="transparent")
+        f_cols.pack(fill="x", padx=15, pady=5)
+        ctk.CTkLabel(f_cols, text="Tit:", font=("Segoe UI", 10)).pack(side="left", padx=(5,2))
+        self.combo_color = ctk.CTkComboBox(f_cols, variable=self.color_cintillo, values=list(self.paleta_colores.keys()), state="readonly", width=110, command=self._on_ui_change)
+        self.combo_color.pack(side="left", padx=2)
+        ctk.CTkLabel(f_cols, text="Sub:", font=("Segoe UI", 10)).pack(side="left", padx=(10,2))
+        self.combo_color_sub = ctk.CTkComboBox(f_cols, variable=self.color_cintillo_sub, values=list(self.paleta_colores.keys()), state="readonly", width=110, command=self._on_ui_change)
+        self.combo_color_sub.pack(side="left", padx=2)
+
+        lf_esq = ctk.CTkFrame(p_ren, fg_color="#181818", corner_radius=8, border_width=1, border_color="#2A2A2A")
+        lf_esq.pack(fill="x", padx=15, pady=10, ipady=5)
+        self.esquinas_map = {"Sup. Izq (TL)": "TL", "Sup. Der (TR)": "TR", "Inf. Izq (BL)": "BL", "Inf. Der (BR)": "BR"}
+        self.esquina_seleccionada = ctk.StringVar(value="Sup. Izq (TL)")
+        lbl_esq = ctk.CTkLabel(lf_esq, text=self.get_text("lbl_esq"), font=("Segoe UI", 11, "bold"), text_color=self.config["accent_blue"])
+        lbl_esq.pack(side="left", padx=(15,5))
+        self.ui_elements["lbl_esq"] = lbl_esq
+        self.combo_esquinas = ctk.CTkComboBox(lf_esq, variable=self.esquina_seleccionada, values=list(self.esquinas_map.keys()), state="readonly", width=100)
+        self.combo_esquinas.pack(side="left", padx=5)
+        lbl_logo = ctk.CTkLabel(lf_esq, text=self.get_text("lbl_logo"), font=("Segoe UI", 11, "bold"), text_color=self.config["accent_blue"])
+        lbl_logo.pack(side="left", padx=(10,5))
+        self.ui_elements["lbl_logo"] = lbl_logo
+        self.logo_actual_var = ctk.StringVar(value=self.logo_selecciones["TL"].get())
+        self.combo_logo_unico = ctk.CTkComboBox(lf_esq, variable=self.logo_actual_var, values=list(self.config["lista_logos"].keys()), state="readonly", width=110, command=lambda e: [self.logo_selecciones[self.esquinas_map[self.esquina_seleccionada.get()]].set(self.logo_actual_var.get()), self.actualizar_monitor_estatico()])
+        self.combo_logo_unico.pack(side="left", padx=5)
+        self.combo_esquinas.configure(command=lambda e: self.logo_actual_var.set(self.logo_selecciones[self.esquinas_map[self.esquina_seleccionada.get()]].get()))
+        ctk.CTkButton(lf_esq, text="➕", width=30, fg_color="#333", font=("Segoe UI", 14, "bold"), command=self.agregar_nuevo_logo).pack(side="left", padx=2)
+        ctk.CTkButton(lf_esq, text="🗑️", width=30, fg_color="#900C3F", font=("Segoe UI", 14, "bold"), command=self.eliminar_logo_actual).pack(side="left", padx=2)
+        sw_logos = ctk.CTkSwitch(lf_esq, text=self.get_text("sw_logos"), variable=self.incluir_logo, command=self._on_ui_change, width=60)
+        sw_logos.pack(side="right", padx=15)
+        self.ui_elements["sw_logos"] = sw_logos
+
+        self.btn_render = ctk.CTkButton(p_ren, text=self.get_text("btn_render"), font=("Segoe UI", 16, "bold"), height=45, corner_radius=10, border_width=2, border_color="#500620", fg_color=self.config["accent_red"], hover_color="#C01050", command=self.start_render_thread)
+        self.btn_render.pack(fill="x", padx=15, pady=(10,15))
+        self.ui_elements["btn_render"] = self.btn_render
+        self.progress = ctk.CTkProgressBar(p_ren, mode='indeterminate', height=8, progress_color=self.config["accent_blue"])
+        self.progress.pack(fill="x", padx=15, pady=(0,15))
+        self.progress.set(0)
+        
+        # --- UI DINÁMICA COLUMNA DERECHA ---
+        self.dyn_frame = ctk.CTkFrame(self.col_der, fg_color="transparent")
+        self.dyn_frame.pack(fill="both", expand=True)
+
+        self.col_der_top = ctk.CTkFrame(self.dyn_frame, fg_color="transparent")
+        self.col_der_bot = ctk.CTkFrame(self.dyn_frame, fg_color="transparent")
+        
+        lbl_mon = ctk.CTkLabel(self.col_der_top, text=self.get_text("lbl_monitor_wysiwyg"), font=("Segoe UI", 11, "bold"), text_color="#888")
+        lbl_mon.pack(anchor="w", pady=(0,5))
+        self.ui_elements["lbl_monitor_wysiwyg"] = lbl_mon
+        
+        monitor_wrapper = ctk.CTkFrame(self.col_der_top, fg_color="#000000", border_width=2, border_color="#333", corner_radius=0)
+        monitor_wrapper.pack(fill="both", expand=True, pady=0)
+        self.canvas_monitor = tk.Canvas(monitor_wrapper, bg="#000", bd=0, highlightthickness=0, cursor="hand2")
+        self.canvas_monitor.pack(padx=2, pady=2, fill="both", expand=True)
+        self.canvas_monitor.bind("<ButtonPress-1>", self.on_canvas_press)
+        self.canvas_monitor.bind("<B1-Motion>", self.on_canvas_drag)
+        self.canvas_monitor.bind("<ButtonRelease-1>", self.on_canvas_drag_release)
+
+        lbl_vis = ctk.CTkLabel(self.col_der_bot, text=self.get_text("lbl_visor_eventos"), font=("Segoe UI", 11, "bold"), text_color="#777777")
+        lbl_vis.pack(anchor="w", pady=(0,5))
+        self.ui_elements["lbl_visor_eventos"] = lbl_vis
+        
+        self.txt_log = scrolledtext.ScrolledText(self.col_der_bot, bg="#050505", fg="#4ade80", font=("Consolas", 10, "bold"), bd=0, padx=10, pady=10)
+        self.txt_log.pack(fill="both", expand=True)
+
+    def gestionar_subs_entrevistas(self):
+        guion = self.txt_guion.get("1.0", tk.END)
+        indices = list(set([int(m.group(1)) for m in re.finditer(r'\[VIDEO_AUDIO_(\d+)', guion)]))
+        if not indices:
+            messagebox.showinfo("Aviso", "No hay etiquetas de entrevista en el guion.")
+            return
+        win = ctk.CTkToplevel(self.root)
+        win.title("💬 Corrector de Subtítulos de Entrevistas")
+        win.geometry("700x600")
+        win.grab_set()
+        sf = ctk.CTkScrollableFrame(win)
+        sf.pack(fill="both", expand=True, padx=10, pady=10)
+        widgets_texto = {}
+        target_lang = self.idioma_salida_guion.get()
+        
+        def transcribir(idx, tw, btn):
+            btn.configure(state="disabled", text="⏳ Procesando con IA...")
+            def _thread():
+                try:
+                    item = self.lista_media_obj[idx]
+                    t_wav = os.path.join(folder_path, f"temp_ext_{idx}.wav")
+                    if item["path"].lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                        self.root.after(0, lambda: [tw.delete("1.0", tk.END), tw.insert("1.0", "[Imagen Estática - Sin Audio]"), btn.configure(state="normal", text="🤖 Auto-Transcribir")])
+                        return
+                    subprocess.run(['ffmpeg', '-y', '-ss', str(item.get("t_in", 0.0)), '-t', str(item.get("duration", 5.0)), '-i', item["path"], '-vn', '-af', 'afftdn=nf=-25', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', t_wav], capture_output=True, creationflags=0x08000000 if os.name == 'nt' else 0)
+                    mdl = self.cargar_whisper()
+                    res = mdl.transcribe(t_wav, language="es", initial_prompt="Bolivia, Amazonía, Avrora Soft.")
+                    txt_bruto = res["text"].strip()
+                    prompt = f"ERES UNA API DE PROCESAMIENTO ESTRICTA. Arregla gramática y ortografía. DEVUELVE ÚNICA Y EXCLUSIVAMENTE EL TEXTO CORREGIDO.\n{txt_bruto}"
+                    try:
+                        res_o = requests.post(self.config["ollama_url"], json={"model": "dolphin-llama3", "prompt": prompt, "stream": False, "options": {"temperature": 0.0}}, timeout=120)
+                        txt_final = res_o.json()["response"].strip() if res_o.ok else txt_bruto
+                    except Exception as eo:
+                        self.log(f"⚠️ Error Ollama: {eo}"); txt_final = txt_bruto
+                    self.root.after(0, lambda: [tw.delete("1.0", tk.END), tw.insert("1.0", txt_final), btn.configure(state="normal", text="🔄 Retranscribir con IA")])
+                except Exception as e:
+                    self.root.after(0, lambda: [tw.insert("1.0", f"Error: {e}"), btn.configure(state="normal", text="🔄 Retranscribir con IA")])
+            threading.Thread(target=_thread, daemon=True).start()
+
+        for idx in indices:
+            if idx >= len(self.lista_media_obj): continue
+            f = ctk.CTkFrame(sf, fg_color="#1a1a1a")
+            f.pack(fill="x", pady=5, padx=5)
+            top_f = ctk.CTkFrame(f, fg_color="transparent")
+            top_f.pack(fill="x", padx=5, pady=5)
+            ctk.CTkLabel(top_f, text=f"Entrevista [{idx}]: {self.lista_media_obj[idx].get('nombre', 'Media')}", font=("Segoe UI", 12, "bold")).pack(side="left")
+            tw = scrolledtext.ScrolledText(f, height=4, bg="#050505", fg="white", font=("Arial", 12))
+            tw.pack(fill="x", padx=5, pady=5)
+            if idx in self.dict_textos_entrevistas: tw.insert("1.0", self.dict_textos_entrevistas[idx])
+            widgets_texto[idx] = tw
+            btn_t = ctk.CTkButton(top_f, text="🤖 Auto-Transcribir", width=140, height=24, fg_color="#ffcc00", text_color="black")
+            btn_t.configure(command=lambda i=idx, t=tw, b=btn_t: transcribir(i, t, b))
+            btn_t.pack(side="right")
+            
+        def guardar():
+            for idx, tw in widgets_texto.items(): self.dict_textos_entrevistas[idx] = tw.get("1.0", tk.END).strip()
+            self.log("✅ Textos guardados."); win.destroy()
+        ctk.CTkButton(win, text="💾 GUARDAR CAMBIOS", fg_color="#2e7d32", font=("Segoe UI", 14, "bold"), height=40, command=guardar).pack(fill="x", padx=10, pady=10)
+
+    def agregar_media(self):
+        archivos = filedialog.askopenfilenames(filetypes=[("Media", "*.mp4;*.mov;*.avi;*.mkv;*.jpg;*.jpeg;*.png;*.webp;*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac;*.webm"), ("Todos", "*.*")])
+        if not archivos: return
+        self.lock_ui(True); self.log("⏳ Importando media...")
+        threading.Thread(target=self._hilo_procesar_media, args=(archivos,), daemon=True).start()
+
+    def _hilo_procesar_media(self, archivos):
+        for a in archivos:
+            is_vid = a.lower().endswith(('.mp4', '.mov', '.avi', '.mkv', '.webm'))
+            is_img = a.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
+            dur = 5.0
+            if is_vid or a.lower().endswith(('.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac')): dur = self.obtener_duracion_audio(a)
+            elif is_img:
+                try: dur = float(self.dur_foto.get())
+                except: dur = 5.0
+            if dur <= 0: dur = 5.0
+            w_p, h_p = 1920, 1080
+            is_vert = False
+            if is_vid and HAS_CV2:
+                try:
+                    cap = cv2.VideoCapture(a); w_p = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)); h_p = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); cap.release()
+                    if h_p > w_p: is_vert = True
+                except: pass
+            elif is_img:
+                try:
+                    img = Image.open(a); w_p, h_p = img.width, img.height
+                    if h_p > w_p: is_vert = True
+                except: pass
+            pil_thumb = self.generar_miniatura_pil(a)
+            def _update_ui(path=a, is_v=is_vid, d=dur, w=w_p, h=h_p, vert=is_vert, p_t=pil_thumb):
+                tk_img = ImageTk.PhotoImage(p_t)
+                self.lista_media_obj.append({"path": path, "thumb": tk_img, "is_video": is_v, "duration": d, "t_in": 0.0, "v_on": True, "a_on": True, "nombre": os.path.basename(path), "transicion": "Cortar", "color": {"b": 0.0, "c": 1.0, "s": 1.0, "sh": 0}, "width": w, "height": h, "is_vid_vertical": vert})
+                self.indice_media_seleccionado = len(self.lista_media_obj) - 1
+                self.refrescar_galeria(); self.actualizar_monitor_estatico()
+            self.root.after(0, _update_ui)
+        self.root.after(0, lambda: [self.log(self.get_text("log_media_add")), self.lock_ui(False)])
+
+    def generar_miniatura_pil(self, path):
+        try:
+            if HAS_CV2 and path.lower().endswith(('.mp4', '.mov', '.avi', '.mkv', '.webm')):
+                cap = cv2.VideoCapture(path); s, f = cap.read(); cap.release()
+                if s: img = Image.fromarray(cv2.cvtColor(f, cv2.COLOR_BGR2RGB))
+                else: img = Image.new('RGB', (140, 80), (40, 40, 40))
+            elif path.lower().endswith(('.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac')):
+                img = Image.new('RGB', (140, 80), (20, 20, 100)); draw = ImageDraw.Draw(img); draw.text((40, 30), "AUDIO", fill="white")
+            else: img = Image.open(path).convert("RGB")
+            img.thumbnail((140, 80), Image.Resampling.LANCZOS); bg = Image.new('RGB', (140, 80), (0, 0, 0)); bg.paste(img, ((140 - img.width) // 2, (80 - img.height) // 2))
+            return bg
+        except: return Image.new('RGB', (140, 80), (50, 50, 50))
+
+    def refrescar_galeria(self):
+        for w in self.scrollable_frame.winfo_children(): w.destroy()
+        texto_guion = self.txt_guion.get("1.0", tk.END) if hasattr(self, 'txt_guion') else ""
+        entrevistas_marcadas = [int(m.group(1)) for m in re.finditer(r'\[VIDEO_AUDIO_(\d+):.*?\]', texto_guion)]
+        for i, item in enumerate(self.lista_media_obj):
+            bc = "#005b9f" if i == self.indice_media_seleccionado else "#0A0A0A"
+            f = tk.Frame(self.scrollable_frame, bg=bc, bd=2); f.pack(side="left", padx=5, pady=5)
+            im = tk.Frame(f, bg=bc); im.pack(side="left", padx=2, pady=2)
+            lbl = tk.Label(im, image=item["thumb"], bg="#000", width=140, height=80, cursor="hand2")
+            lbl.image = item["thumb"]; lbl.bind("<Button-1>", lambda e, idx=i: self.seleccionar_media(idx)); lbl.pack()
+            tk.Label(im, text=f"[{i}] {item.get('nombre', os.path.basename(item['path']))[:10]}", font=("Segoe UI", 8, "bold"), bg=bc, fg="#fff").pack(pady=(2,0))
+            tk.Label(im, text="🎤 ENTREVISTA" if i in entrevistas_marcadas else "🎥 B-ROLL FONDO", font=("Segoe UI", 8, "bold"), bg="#900C3F" if i in entrevistas_marcadas else "#2e7d32", fg="#fff").pack(fill="x", pady=2)
+            bf = tk.Frame(f, bg=bc); bf.pack(side="left", fill="y", padx=2, pady=2)
+            tk.Button(bf, text="◀", command=lambda idx=i: self.mover_item(idx, -1), bg="#333", fg="white", bd=0, width=2).pack(side="top", expand=True, fill="both", pady=1)
+            tk.Button(bf, text="X", command=lambda idx=i: self.eliminar_item(idx), bg=self.config["accent_red"], fg="white", bd=0, width=2).pack(side="top", expand=True, fill="both", pady=1)
+            tk.Button(bf, text="▶", command=lambda idx=i: self.mover_item(idx, 1), bg="#333", fg="white", bd=0, width=2).pack(side="top", expand=True, fill="both", pady=1)
+
+    def seleccionar_media(self, idx): 
+        self.indice_media_seleccionado = idx
+        self.refrescar_galeria(); self.actualizar_monitor_estatico()
+
+    def mover_item(self, idx, dir):
+        ni = idx + dir
+        if 0 <= ni < len(self.lista_media_obj): 
+            self.lista_media_obj[idx], self.lista_media_obj[ni] = self.lista_media_obj[ni], self.lista_media_obj[idx]
+            if self.indice_media_seleccionado == idx: self.indice_media_seleccionado = ni 
+            elif self.indice_media_seleccionado == ni: self.indice_media_seleccionado = idx
+            self.refrescar_galeria(); self.actualizar_monitor_estatico()
+
+    def eliminar_item(self, idx): 
+        del self.lista_media_obj[idx]
+        self.indice_media_seleccionado = -1
+        self.refrescar_galeria(); self.actualizar_monitor_estatico()
+
+    def abrir_laboratorio_color(self):
+        if self.indice_media_seleccionado < 0: return messagebox.showwarning("Aviso", "Selecciona video o foto en galería.")
+        item = self.lista_media_obj[self.indice_media_seleccionado]
+        col_data = item.setdefault("color", {"b": 0.0, "c": 1.0, "s": 1.0, "sh": 0})
+        win = ctk.CTkToplevel(self.root)
+        win.title("🎨 Lab Color"); win.geometry("500x550"); win.grab_set()
+        v_b, v_c, v_s, v_sh = ctk.DoubleVar(value=col_data.get("b", 0.0)), ctk.DoubleVar(value=col_data.get("c", 1.0)), ctk.DoubleVar(value=col_data.get("s", 1.0)), ctk.IntVar(value=col_data.get("sh", 0))
+        canvas_color = tk.Canvas(win, width=320, height=180, bg="#050505", highlightthickness=1, highlightbackground="#333"); canvas_color.pack(pady=10)
+        try:
+            if item.get("is_video"):
+                cap = cv2.VideoCapture(item["path"]); cap.set(cv2.CAP_PROP_POS_FRAMES, 30); ret, frame = cap.read(); cap.release()
+                preview_orig = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)) if ret else Image.new('RGB', (320, 180), '#333')
+            else: preview_orig = Image.open(item["path"]).convert('RGB')
+            preview_orig.thumbnail((320, 180), Image.Resampling.LANCZOS)
+        except: preview_orig = Image.new('RGB', (320, 180), '#333')
+
+        def update_color_preview(*args):
+            try:
+                img = preview_orig.copy()
+                img = ImageEnhance.Brightness(img).enhance(max(0.0, 1.0 + v_b.get())); img = ImageEnhance.Contrast(img).enhance(max(0.0, v_c.get())); img = ImageEnhance.Color(img).enhance(max(0.0, v_s.get()))
+                if v_sh.get() > 0:
+                    for _ in range(v_sh.get()): img = img.filter(ImageFilter.EDGE_ENHANCE)
+                tk_img = ImageTk.PhotoImage(img); canvas_color.create_image(160, 90, image=tk_img); canvas_color.image = tk_img
+            except: pass
+
+        def save_and_close():
+            item["color"]["b"], item["color"]["c"], item["color"]["s"], item["color"]["sh"] = v_b.get(), v_c.get(), v_s.get(), v_sh.get()
+            self.log(f"🎨 Filtros guardados."); win.destroy()
+            
+        def reset_col():
+            v_b.set(0.0); v_c.set(1.0); v_s.set(1.0); v_sh.set(0); update_color_preview()
+            
+        ctk.CTkLabel(win, text="Ajustes de Clip", font=("Segoe UI", 16, "bold")).pack(pady=(5,0))
+        def sl(txt, var, frm, to, is_int=False):
+            f = ctk.CTkFrame(win, fg_color="transparent"); f.pack(fill="x", padx=20, pady=5)
+            ctk.CTkLabel(f, text=txt, width=80, anchor="w").pack(side="left")
+            vl = ctk.CTkLabel(f, text="0.0", width=40); vl.pack(side="right")
+            def upd(*args): vl.configure(text=str(int(var.get())) if is_int else f"{var.get():.2f}"); update_color_preview()
+            var.trace_add("write", upd)
+            ctk.CTkSlider(f, from_=frm, to=to, variable=var).pack(side="left", fill="x", expand=True, padx=10); upd()
+            
+        sl("Brillo:", v_b, -1.0, 1.0); sl("Contraste:", v_c, 0.0, 3.0); sl("Saturación:", v_s, 0.0, 3.0); sl("Enfoque:", v_sh, 0, 5, True)
+        bf = ctk.CTkFrame(win, fg_color="transparent"); bf.pack(pady=20)
+        ctk.CTkButton(bf, text="RESETEAR", width=100, fg_color="#333", command=reset_col).pack(side="left", padx=10)
+        ctk.CTkButton(bf, text="GUARDAR", width=100, fg_color="#2e7d32", command=save_and_close).pack(side="left", padx=10)
+        update_color_preview()
+
+    def abrir_recortador_visual(self):
+        if self.indice_media_seleccionado < 0: return messagebox.showwarning("Aviso", "Selecciona video en galería.")
+        item = self.lista_media_obj[self.indice_media_seleccionado]
+        if not item.get("is_video"): return messagebox.showwarning("Aviso", "Solo videos.")
+        self.log("⏳ Abriendo Recortador Visual...")
+        self.root.after(50, lambda: self._construir_ui_recortador_blindado(item))
+
+    def _construir_ui_recortador_blindado(self, item):
+        import vlc
+        win = ctk.CTkToplevel(self.root); win.title("🎬 Recortador Maestro"); win.geometry("950x750"); win.grab_set() 
+        canvas = tk.Canvas(win, bg="#000", width=800, height=450, highlightthickness=0); canvas.pack(pady=10)
+        instance = vlc.Instance("--no-xlib", "--quiet", "--no-osd"); player = instance.media_player_new()
+        player.set_hwnd(canvas.winfo_id()); player.set_media(instance.media_new(item["path"]))
+        dur_total = item.get("dur_original", item.get("duration", 5.0))
+        var_tin, var_tout, var_pos = ctk.DoubleVar(value=item.get("t_in", 0.0)), ctk.DoubleVar(value=item.get("t_out", dur_total)), ctk.DoubleVar(value=item.get("t_in", 0.0))
+        lbl_info = ctk.CTkLabel(win, text="IN: 0.00s | OUT: 0.00s", font=("Consolas", 14, "bold"), text_color=self.config["accent_blue"]); lbl_info.pack(pady=5)
+
+        def update_ui_loop():
+            if player.is_playing():
+                curr_ms = player.get_time()
+                if curr_ms >= 0: var_pos.set(curr_ms / 1000.0)
+            win.after(100, update_ui_loop)
+
+        def toggle_play():
+            if player.is_playing(): player.pause()
+            else: player.play()
+
+        def seek_vlc(val):
+            if not player.is_playing(): player.set_time(int(float(val) * 1000))
+
+        ctk.CTkSlider(win, from_=0.0, to=dur_total, variable=var_pos, command=seek_vlc).pack(fill="x", padx=50, pady=10)
+        def al(): lbl_info.configure(text=f"IN: {var_tin.get():.2f}s | OUT: {var_tout.get():.2f}s (Dur: {var_tout.get()-var_tin.get():.2f}s)")
+        def si(): var_tin.set(var_pos.get()); al()
+        def so(): var_tout.set(var_pos.get()); al()
+
+        def aplicar_recorte():
+            nuevo_item = item.copy()
+            nuevo_item["t_in"], nuevo_item["t_out"], nuevo_item["duration"], nuevo_item["nombre"] = var_tin.get(), var_tout.get(), var_tout.get() - var_tin.get(), f"Corte_{int(time.time())}"
+            self.lista_media_obj.insert(self.indice_media_seleccionado + 1, nuevo_item); self.indice_media_seleccionado += 1
+            self.refrescar_galeria(); cerrar_vlc()
+
+        def cerrar_vlc(): player.stop(); player.release(); instance.release(); win.destroy()
+        win.protocol("WM_DELETE_WINDOW", cerrar_vlc)
+        btn_f = ctk.CTkFrame(win, fg_color="transparent"); btn_f.pack(pady=10)
+        ctk.CTkButton(btn_f, text="▶/⏸ PLAY/PAUSA", fg_color="#2e7d32", command=toggle_play).pack(side="left", padx=10)
+        ctk.CTkButton(btn_f, text="[ MARCAR IN", fg_color="#ffcc00", text_color="black", command=si).pack(side="left", padx=5)
+        ctk.CTkButton(btn_f, text="MARCAR OUT ]", fg_color="#ffcc00", text_color="black", command=so).pack(side="left", padx=5)
+        ctk.CTkButton(win, text="✂️ CREAR SUB-CLIP", height=40, font=("Segoe UI", 12, "bold"), fg_color=self.config["accent_red"], command=aplicar_recorte).pack(pady=10)
+        al(); player.play(); win.after(500, lambda: [player.pause(), player.set_time(int(var_tin.get()*1000)), update_ui_loop()])
+
+    def toggle_play_pause(self):
+        if not self.ruta_cortina_musical: return
+        if self.is_playing:
+            if self.is_paused: 
+                pygame.mixer.music.unpause(); self.is_paused = False
+                self.btn_play_pause.configure(text=self.get_text("btn_stop").replace("STOP", "PAUSA").replace("ОСТАНОВИТЬ", "ПАУЗА").replace("PARAR", "PAUSA").replace("停止", "暂停"), fg_color="#005b9f")
+            else: 
+                pygame.mixer.music.pause(); self.is_paused = True
+                self.btn_play_pause.configure(text=self.get_text("btn_play"), fg_color="#2e7d32")
+        else: self.iniciar_reproduccion_player(self.tiempo_actual_musica.get(), self.ruta_cortina_musical)
+
+    def iniciar_reproduccion_player(self, start_pos, p_d):
+        try: 
+            pygame.mixer.music.load(p_d); pygame.mixer.music.set_volume(self.vol_mus_fondo.get()); pygame.mixer.music.play(0, start_pos)
+            self.is_playing, self.is_paused, self.start_offset = True, False, start_pos
+            self.tiempo_actual_musica.set(start_pos)
+            self.btn_play_pause.configure(text=self.get_text("btn_stop").replace("STOP", "PAUSA"), fg_color="#005b9f")
+            self.actualizar_timeline()
+        except Exception as e: self.log(f"⚠️ Aviso: Error al iniciar reproductor: {e}")
+
+    def detener_musica_player(self):
+        try: pygame.mixer.music.stop()
+        except: pass
+        self.is_playing, self.is_paused = False, False
+        self.tiempo_actual_musica.set(0.0)
+        self.btn_play_pause.configure(text=self.get_text("btn_play"), fg_color="#2e7d32")
+        if self.duracion_musica > 0: self.lbl_tiempo.configure(text=f"00:00 / {self.formatear_tiempo(self.duracion_musica)}")
+
+    def actualizar_timeline(self):
+        if self.is_playing and not self.is_paused:
+            p = pygame.mixer.music.get_pos()
+            if p >= 0:
+                ct = self.start_offset + (p / 1000.0)
+                if ct >= self.duracion_musica: self.detener_musica_player()
+                else: 
+                    self.tiempo_actual_musica.set(ct)
+                    self.lbl_tiempo.configure(text=f"{self.formatear_tiempo(ct)} / {self.formatear_tiempo(self.duracion_musica)}")
+        if self.is_playing: self.updater_id = self.root.after(100, self.actualizar_timeline)
+
+    def on_slider_scroll(self, val):
+        if self.duracion_musica > 0: self.lbl_tiempo.configure(text=f"{self.formatear_tiempo(float(val))} / {self.formatear_tiempo(self.duracion_musica)}")
+
+    def on_slider_release(self, e):
+        if self.duracion_musica > 0 and self.ruta_cortina_musical: self.iniciar_reproduccion_player(self.tiempo_actual_musica.get(), self.ruta_cortina_musical)
+
+    def actualizar_monitor_estatico(self):
+        if not HAS_CV2: return
+        is_vertical = (self.formato_video.get() == "9:16")
+        TW, TH = (1080, 1920) if is_vertical else (1920, 1080)
+        CW, CH = (225, 400) if is_vertical else (336, 189) 
+        
+        self.canvas_monitor.config(width=CW, height=CH)
+        self.canvas_monitor.delete("all")
+        base_img = Image.new('RGB', (TW, TH), '#050505')
+        
+        ruta_fondo_sel = self.config["lista_fondos"].get(self.fondo_seleccionado.get(), "")
+        if ruta_fondo_sel and os.path.exists(ruta_fondo_sel) and not ruta_fondo_sel.lower().endswith(('.mp4', '.mov')):
+            try: base_img.paste(Image.open(ruta_fondo_sel).convert("RGB").resize((TW, TH), Image.Resampling.LANCZOS), (0, 0))
+            except: pass
+            
+        t_lang = LANGUAGES.get(self.idioma_actual, LANGUAGES["Español"])
+        opt_100p = t_lang.get("opt_100p", "100% Pantalla")
+        opt_reduc = t_lang.get("opt_reduc", "Reducido Proporcional")
+        
+        if is_vertical:
+            if self.encuadre_916.get() == opt_100p: sw_out, sh_out, vx_off, y_pip = 1080, 1920, 0, 0
+            elif self.encuadre_916.get() == opt_reduc: sw_out, sh_out, vx_off, y_pip = 1080, int(1080 * 9/16), 0, (1920 - int(1080 * 9/16)) // 2
+            else: sw_out, sh_out, vx_off, y_pip = 940, int(940 * 16/9), (1080 - 940) // 2, (1920 - int(940 * 16/9)) // 2
+            cw = 900; cx = (1080 - cw) // 2
+            h1, h2, hs, margen = 160, 160, 180, 50
+            ys = 1920 - hs - margen; y2 = ys - h2; y1 = y2 - h1
+        else:
+            if self.encuadre_169.get() == opt_100p: sw_out, sh_out, vx_off, y_pip = 1920, 1080, 0, 0
+            else: sw_out, sh_out, vx_off, y_pip = int(1920 * 0.70), int(1080 * 0.70), (1920 - int(1920 * 0.70)) // 2, (1080 - int(1080 * 0.70)) // 2 - 50 
+            cw = 1400; cx = (1920 - cw) // 2
+            h1, h2, hs = 80, 80, 120
+            ys = 1080 - hs - 40; y2 = ys - h2; y1 = y2 - h1
+        
+        if self.lista_media_obj and self.indice_media_seleccionado >= 0:
+            item = self.lista_media_obj[self.indice_media_seleccionado]
+            if item.get("v_on", True):
+                try:
+                    if item["path"].lower().endswith(('.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac')):
+                        p_img = Image.new('RGB', (400, 300), '#1a1a40'); draw_t = ImageDraw.Draw(p_img); draw_t.text((150, 140), "AUDIO", fill="white")
+                    elif item["path"].lower().endswith(('.jpg', '.jpeg', '.png', '.webp')) or not item["path"].lower().endswith(('.mp4', '.mov', '.avi', '.mkv', '.webm')): p_img = Image.open(item["path"]).convert("RGB")
+                    else:
+                        cap = cv2.VideoCapture(item["path"])
+                        if item.get("t_in", 0.0) > 0: cap.set(cv2.CAP_PROP_POS_MSEC, item["t_in"] * 1000)
+                        suc, frame = cap.read(); cap.release()
+                        if suc: p_img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                        else: p_img = Image.new('RGB', (400, 300), '#333333')
+                    
+                    is_vid_vertical = item.get("is_vid_vertical", p_img.height > p_img.width)
+                    if is_vertical and self.encuadre_916.get() == opt_reduc:
+                        p_img.thumbnail((sw_out, sh_out), Image.Resampling.LANCZOS)
+                        p_box = Image.new('RGBA', (sw_out, sh_out), (0, 0, 0, 0)); p_box.paste(p_img, ((sw_out - p_img.width) // 2, (sh_out - p_img.height) // 2))
+                    elif is_vertical and is_vid_vertical:
+                        target_ratio = sw_out / sh_out; img_ratio = p_img.width / p_img.height
+                        if img_ratio > target_ratio:
+                            p_res = p_img.resize((int(sh_out * img_ratio), sh_out), Image.Resampling.LANCZOS)
+                            left = (int(sh_out * img_ratio) - sw_out) // 2; p_box = p_res.crop((left, 0, left + sw_out, sh_out))
+                        else:
+                            p_res = p_img.resize((sw_out, int(sw_out / img_ratio)), Image.Resampling.LANCZOS)
+                            top = (int(sw_out / img_ratio) - sh_out) // 2; p_box = p_res.crop((0, top, sw_out, top + sh_out))
+                    elif is_vertical and not is_vid_vertical:
+                        try:
+                            gray_cv = cv2.cvtColor(np.array(p_img), cv2.COLOR_RGB2GRAY)
+                            face_c = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+                            faces_f = face_c.detectMultiScale(gray_cv, 1.1, 4)
+                            if len(faces_f) > 0:
+                                fx, fy, fw, fh = faces_f[0]; scale_f = sh_out / float(p_img.height); calc_x = int((fx + fw//2) * scale_f) - (sw_out // 2)
+                                crop_x_p = max(0, min(calc_x, int(p_img.width * scale_f) - sw_out))
+                            else: crop_x_p = (int(p_img.width * (sh_out / float(p_img.height))) - sw_out) // 2
+                        except: crop_x_p = (int(p_img.width * (sh_out / float(p_img.height))) - sw_out) // 2
+                        p_res = p_img.resize((int(sh_out * (p_img.width / float(p_img.height))), sh_out), Image.Resampling.LANCZOS)
+                        p_box = p_res.crop((crop_x_p, 0, crop_x_p + sw_out, sh_out))
+                    else:
+                        if self.encuadre_169.get() == opt_100p:
+                            target_ratio = sw_out / sh_out; img_ratio = p_img.width / p_img.height
+                            if img_ratio > target_ratio:
+                                p_res = p_img.resize((int(sh_out * img_ratio), sh_out), Image.Resampling.LANCZOS)
+                                left = (int(sh_out * img_ratio) - sw_out) // 2; p_box = p_res.crop((left, 0, left + sw_out, sh_out))
+                            else:
+                                p_res = p_img.resize((sw_out, int(sw_out / img_ratio)), Image.Resampling.LANCZOS); p_box = p_res.crop((0, 0, sw_out, sh_out))
+                        else:
+                            p_img.thumbnail((sw_out, sh_out), Image.Resampling.LANCZOS)
+                            p_box = Image.new('RGBA', (sw_out, sh_out), (0, 0, 0, 0)); p_box.paste(p_img, ((sw_out - p_img.width) // 2, (sh_out - p_img.height) // 2))
+                    base_img.paste(p_box, (vx_off, y_pip), mask=p_box if p_box.mode == 'RGBA' else None)
+                except: pass
+            
+        draw = ImageDraw.Draw(base_img, "RGBA")
+        if self.lista_media_obj and self.indice_media_seleccionado >= 0 and self.lista_media_obj[self.indice_media_seleccionado].get("v_on", True):
+            draw.rectangle([vx_off, y_pip, vx_off + sw_out - 1, y_pip + sh_out - 1], outline="white", width=10)
+        
+        cb = self.paleta_colores.get(self.color_cintillo.get(), {}).get("bg", "#003399")
+        cb_sub = self.paleta_colores.get(self.color_cintillo_sub.get(), {}).get("bg", "#111111")
+        cintillo_fg = self.paleta_colores.get(self.color_cintillo.get(), {}).get("fg", "white")
+        
+        if self.incluir_textos.get():
+            draw.rectangle([cx, y1, cx + cw, y1 + h1], fill=cb); draw.rectangle([cx, y2, cx + cw, y2 + h2], fill=(0, 0, 0, 204)); draw.rectangle([cx, ys, cx + cw, ys + hs], fill=cb_sub)
+            try:
+                font_path = self.config.get('font_path', 'C:/Windows/Fonts/arialbd.ttf')
+                if not os.path.exists(font_path): font_path = "arial.ttf"
+                try: fnt_title = ImageFont.truetype(font_path, 60 if is_vertical else 50); fnt_sub = ImageFont.truetype(font_path, 45 if is_vertical else 40)
+                except IOError: fnt_title = ImageFont.load_default(); fnt_sub = fnt_title
+                titular_txt = self.ent_titular_916.get() if is_vertical else self.ent_titular_169.get()
+                t1, t2 = self.wrap_title_balanced(titular_txt.strip())
+                def draw_centered_text(draw_obj, text, font, x_box, y_box, w_box, h_box, color):
+                    if not text: return
+                    try: bbox = draw_obj.textbbox((0,0), text, font=font); tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                    except: tw, th = len(text)*15, 30
+                    draw_obj.text((x_box + (w_box - tw) // 2, y_box + (h_box - th) // 2 - 5), text, font=font, fill=color)
+                draw_centered_text(draw, t1, fnt_title, cx, y1, cw, h1, cintillo_fg); draw_centered_text(draw, t2, fnt_title, cx, y2, cw, h2, "white"); draw_centered_text(draw, "SUSTITUIR CON SUBTÍTULOS AUTOMÁTICOS", fnt_sub, cx, ys, cw, hs, "white")
+            except: pass
+            
+        self.current_monitor_bg = ImageTk.PhotoImage(base_img.resize((CW, CH), Image.Resampling.LANCZOS))
+        self.canvas_monitor.create_image(CW//2, CH//2, image=self.current_monitor_bg, anchor="center", tags="fondo")
+        
+        if self.incluir_logo.get():
+            for pos, d in self.logos.items():
+                lp = self.config["lista_logos"].get(self.logo_selecciones[pos].get(), "")
+                if lp and os.path.exists(lp):
+                    try: 
+                        l_img = Image.open(lp).convert("RGBA"); lw = 256 if is_vertical else 176; lh = int(float(l_img.height) * (lw / float(l_img.width)))
+                        d["tk_img"] = ImageTk.PhotoImage(l_img.resize((max(1, int(lw * (CW/TW))), max(1, int(lh * (CH/TH)))), Image.Resampling.LANCZOS))
+                        self.canvas_monitor.create_image(d.get("rel_x", 0.05) * CW, d.get("rel_y", 0.05) * CH, image=d["tk_img"], anchor="nw", tags=("logo", pos))
+                    except: pass
+
+    def on_canvas_press(self, event):
+        items = self.canvas_monitor.find_withtag("current")
+        if items and "logo" in self.canvas_monitor.gettags(items[0]):
+            self.drag_data.update({"item": items[0], "pos": [t for t in self.canvas_monitor.gettags(items[0]) if t in ["TL", "TR", "BL", "BR"]][0], "x": event.x, "y": event.y})
+            inv_map = {v: k for k, v in self.esquinas_map.items()}; self.esquina_seleccionada.set(inv_map[self.drag_data["pos"]]); self.logo_actual_var.set(self.logo_selecciones[self.drag_data["pos"]].get())
+        else: self.drag_data["item"] = None
+
+    def on_canvas_drag(self, event):
+        if not self.drag_data["item"]: return
+        self.canvas_monitor.move(self.drag_data["item"], event.x - self.drag_data["x"], event.y - self.drag_data["y"]); self.drag_data.update({"x": event.x, "y": event.y})
+        c = self.canvas_monitor.coords(self.drag_data["item"]); lw, lh = (225, 400) if self.formato_video.get() == "9:16" else (640, 360) 
+        if lw > 0 and lh > 0: self.logos[self.drag_data["pos"]]["rel_x"] = c[0] / lw; self.logos[self.drag_data["pos"]]["rel_y"] = c[1] / lh
+
+    def on_canvas_drag_release(self, event):
+        if not self.drag_data["item"]: return
+        fmt = "logos_pos_9_16" if self.formato_video.get() == "9:16" else "logos_pos_16_9"
+        pos = self.drag_data["pos"]
+        self.config[fmt][pos]["rel_x"] = self.logos[pos]["rel_x"]; self.config[fmt][pos]["rel_y"] = self.logos[pos]["rel_y"]
+        self.guardar_config_sistema()
+
+    def toggle_grabacion(self):
+        if not HAS_PYAUDIO: return messagebox.showerror("Error", "Falta PyAudio.")
+        if not self.is_recording: 
+            self.detener_musica_player(); self.is_recording = True; self.fuente_voz.set("MIC")
+            self.iniciar_ping(self.led_mic, "#333333", self.config["accent_red"], "ping_active_mic"); self.btn_grabar.configure(text="⏹", fg_color="#FF4444")
+            threading.Thread(target=self.grabar_audio_mic, daemon=True).start()
+        else: 
+            self.is_recording = False; self.detener_ping(self.led_mic, "#333333", "ping_active_mic"); self.btn_grabar.configure(text="🔴", fg_color=self.config["accent_red"])
+
+    def grabar_audio_mic(self):
+        try:
+            p = pyaudio.PyAudio()
+            stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, frames_per_buffer=1024)
+            frames = []
+            while self.is_recording: frames.append(stream.read(1024))
+            try: stream.stop_stream()
+            except: pass
+            stream.close(); p.terminate()
+            wf = wave.open(self.ruta_voz_personal, 'wb')
+            wf.setnchannels(1); wf.setsampwidth(p.get_sample_size(pyaudio.paInt16)); wf.setframerate(44100)
+            wf.writeframes(b''.join(frames)); wf.close()
+            self.log("✅ Grabación finalizada."); self.root.after(0, self._iniciar_transcripcion_mic)
+        except Exception as e: 
+            self.log(f"❌ ERROR MIC: {e}"); self.is_recording = False
+            self.root.after(0, lambda: [self.detener_ping(self.led_mic, "#333333", "ping_active_mic"), self.btn_grabar.configure(text="🔴", fg_color=self.config["accent_red"])])
+
+    def _iniciar_transcripcion_mic(self):
+        if not os.path.exists(self.ruta_voz_personal): return
+        self.txt_guion.delete("1.0", tk.END); self.txt_guion.insert("1.0", self.get_text("log_ia_trans"))
+        self.iniciar_ping(self.led_ia, "#333333", "#FFA500", "ping_active_ia")
+        threading.Thread(target=self._hilo_transcripcion_mic, daemon=True).start()
+
+    def _hilo_transcripcion_mic(self):
+        try:
+            modelo_w = self.cargar_whisper()
+            result = modelo_w.transcribe(self.ruta_voz_personal, language="es", initial_prompt="Bolivia, Amazonía, Avrora Soft.")
+            texto_bruto = result["text"].strip()
+            prompt_corr = f"Actúa como corrector ortotipográfico profesional. Corrige ortografía y gramática en español. Escribe TODOS los números con letras. RECUERDA: RESPETA ESTRICTAMENTE LA CONCORDANCIA GRAMATICAL DE GÉNERO Y NÚMERO. Devuelve SOLO el texto corregido.\n\nTexto original:\n{texto_bruto}"
+            try:
+                res = requests.post(self.config["ollama_url"], json={"model": "llama3.2:3b", "prompt": prompt_corr, "stream": False, "options": {"temperature": 0.0}}, timeout=60)
+                txt_listo = res.json()["response"].strip().replace('\n', ' ')
+            except: txt_listo = texto_bruto
+            self.root.after(0, lambda: [self.txt_guion.delete("1.0", tk.END), self.txt_guion.insert("1.0", txt_listo), self.log(self.get_text("log_ia_ok")), self.detener_ping(self.led_ia, "#4ade80", "ping_active_ia")])
+        except Exception as e: self.root.after(0, lambda: [self.txt_guion.delete("1.0", tk.END), self.txt_guion.insert("1.0", f"❌ Error transcripción: {e}"), self.log(f"❌ Error Whisper: {e}"), self.detener_ping(self.led_ia, "#4ade80", "ping_active_ia")])
+
+    def start_ia_thread(self):
+        n = self.txt_input.get("1.0", tk.END).strip()
+        if not n: return
+        self.fuente_voz.set("IA"); self.btn_procesar.configure(state="disabled"); self.iniciar_ping(self.led_ia, "#333333", "#FFA500", "ping_active_ia")
+        threading.Thread(target=self.ejecutar_ia, args=(n,), daemon=True).start()
+
+    def ejecutar_ia(self, noticia):
+        target_lang = self.idioma_salida_guion.get()
+        try: dur_segundos = int(self.duracion_guion_ia.get())
+        except: dur_segundos = 60
+        palabras_aprox = int(dur_segundos * 2.5)
+        prompt = f"""Actúa como Director de Contenidos Senior de {self.config['empresa_nombre']}. Tu tarea es procesar la noticia suministrada y responder EXCLUSIVAMENTE con un objeto JSON válido y limpio.
+REGLAS DE TRADUCCIÓN Y CONCORDANCIA:
+- Todo el contenido debe estar redactado e implementado en idioma {target_lang}.
+- Es un requisito MANDATORIO y CRÍTICO respetar rigurosamente la concordancia gramatical de género y número en todas las oraciones.
+REGLAS DE TITULARES:
+- "titular_16_9": Debe ser un titular de impacto cinematográfico para pantalla ancha horizontal (relación de aspecto 16:9), con una longitud de entre 6 y 10 palabras bien balanceadas.
+- "titular_9_16": Debe ser un titular extremadamente sintético, directo y vertical para redes sociales o pantallas móviles (relación de aspecto 9:16), limitado estrictamente a un máximo absoluto de 4 o 5 palabras contundentes.
+FORMATO DE SALIDA COMPLETO (SÓLO CONTESTA ESTO):
+{{"titular_16_9": "TEXTO_AQUÍ", "titular_9_16": "TEXTO_AQUÍ", "locucion": "TEXTO_DE_LOCUCION_DE_EXACTAMENTE_{palabras_aprox}_PALABRAS"}}
+Noticia a procesar:
+{noticia}"""        
+        try:
+            self.log(self.get_text("log_ia_conn"))
+            res = requests.post(self.config["ollama_url"], json={"model": "llama3", "prompt": prompt, "stream": False, "format": "json"}, timeout=360)
+            res.raise_for_status()
+            payload = json.loads(res.json()["response"])
+            titular_169 = self.limpiar_texto(payload.get("titular_16_9", "NOTICIA EN DESARROLLO")).upper()
+            titular_916 = self.limpiar_texto(payload.get("titular_9_16", "URGENTE")).upper()
+            locucion = self.limpiar_texto(payload.get("locucion", ""), es_locucion=True)
+            self.root.after(0, lambda: [
+                self.ent_titular_169.delete(0, tk.END), self.ent_titular_169.insert(0, titular_169), 
+                self.ent_titular_916.delete(0, tk.END), self.ent_titular_916.insert(0, titular_916), 
+                self.txt_guion.delete("1.0", tk.END), self.txt_guion.insert(tk.END, locucion), 
+                self.log(self.get_text("log_ia_guion_ok")), self.actualizar_monitor_estatico()
+            ])
+        except requests.exceptions.RequestException as e: self.log(f"❌ ERROR IA (Red): Verifica que Ollama esté activo. {e}")
+        except json.JSONDecodeError as e: self.log(f"❌ ERROR IA (Formato de Respuesta): {e}")
+        except Exception as e: self.log(f"❌ ERROR IA GENERAL: {str(e)}")
+        finally: self.root.after(0, lambda: [self.detener_ping(self.led_ia, "#4ade80", "ping_active_ia"), self.btn_procesar.configure(state="normal")])
+
+    def limpiar_texto(self, texto, es_locucion=False):
+        if not texto: return ""
+        t = str(texto).replace("'", "").replace('"', "").replace(":", "").replace("{", "").replace("}", "").replace("[", "").replace("]", "")
+        t = re.sub(r'[\r\n\t]+', ' ', t)
+        t = re.sub(r'(?i)\b(cripta|script)\b', '', t)
+        patrones = [r'^(Titular|Fecha|Noticia|Script|Locucion|Redacción|Guion|Boletín|Resumen|Audio|Texto)\s*[:\-]*\s*', r'^\s*[-*#]+\s*']
+        if es_locucion:
+            patrones_saludo = [r'^\s*(hola|bienvenidos|saludos|amigos|muy buenas).*?[\.,!¡]*\s*', r'^\s*buenas\s+(tardes|noches|días).*?[\.,!¡]*\s*', r'^\s*buenos\s+días.*?[\.,!¡]*\s*']
+            for pat in patrones_saludo: t = re.sub(pat, '', t, flags=re.IGNORECASE).strip()
+        for p in patrones: t = re.sub(p, '', t, flags=re.IGNORECASE)
+        return re.sub(r'\s+', ' ', t).strip()
+
+    def aplicar_dsp_voz(self, audio_fuente, ruta_salida):
+        filtros = []
+        if self.voz_denoise.get(): filtros.append("afftdn=nr=10:nf=-20")
+        pitch_val = self.voz_pitch.get()
+        if pitch_val != 0.0: pitch_factor = 2.0 ** (pitch_val / 12.0); filtros.append(f"rubberband=pitch={pitch_factor}")
+        if self.voz_compresor.get(): filtros.append("acompressor=threshold=-15dB:ratio=2.5:attack=10:release=100:makeup=2")
+        boost_val = self.voz_boost.get()
+        if boost_val != 0: filtros.append(f"volume={boost_val}dB")
+        filtros.append("alimiter=limit=-1.5dB:level=True")
+
+        if os.path.exists(ruta_salida):
+            try: os.remove(ruta_salida)
+            except: pass
+
+        if filtros:
+            f_str = ",".join(filtros)
+            cmd = ['ffmpeg', '-y', '-hide_banner', '-i', audio_fuente, '-af', f_str, ruta_salida]
+            try:
+                subprocess.run(cmd, capture_output=True, creationflags=0x08000000 if os.name == 'nt' else 0)
+                if not os.path.exists(ruta_salida): shutil.copy(audio_fuente, ruta_salida)
+            except: shutil.copy(audio_fuente, ruta_salida)
+        else: shutil.copy(audio_fuente, ruta_salida)
+
+    def importar_video_a_guion(self):
+        path = filedialog.askopenfilename(filetypes=[("Media", "*.mp4;*.mov;*.avi;*.mkv;*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac;*.webm"), ("Todos", "*.*")])
+        if not path: return
+        self.btn_video_guion.configure(state="disabled"); self.btn_procesar.configure(state="disabled")
+        self.txt_input.delete("1.0", tk.END); self.txt_input.insert("1.0", "⏳ Extrayendo audio...")
+        self.iniciar_ping(self.led_ia, "#333333", "#FFA500", "ping_active_ia")
+        threading.Thread(target=self._hilo_video_a_guion, args=(path,), daemon=True).start()
+
+    def _hilo_video_a_guion(self, path):
+        try:
+            temp_audio = os.path.join(folder_path, "temp_whisper_import.wav")
+            try: subprocess.run(['ffmpeg', '-y', '-i', path, '-vn', '-af', 'afftdn=nf=-25', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', temp_audio], capture_output=True, creationflags=0x08000000 if os.name == 'nt' else 0)
+            except Exception as e: self.log(f"❌ Error al ejecutar FFmpeg: {e}"); raise
+            self.root.after(0, lambda: [self.txt_input.delete("1.0", tk.END), self.txt_input.insert("1.0", "🤖 Transcribiendo...")])
+            modelo_w = self.cargar_whisper()
+            result = modelo_w.transcribe(temp_audio, language="es", initial_prompt="Bolivia, Amazonía, Avrora Soft.")
+            texto_bruto = result["text"].strip()
+            self.root.after(0, lambda: [self.txt_input.delete("1.0", tk.END), self.txt_input.insert("1.0", "✨ Traducción...")])
+            target_lang = self.idioma_salida_guion.get()
+            prompt = f"Actúa como traductor profesional. TRADUCE DE MANERA ÍNTEGRA, COMPLETA E INEXTENSA AL {target_lang} el texto. NO RESUMAS NADA, mantén cada frase y detalle del original. Devuelve SOLO el texto limpio en {target_lang}. PROHIBIDO USAR ASTERISCOS O SALUDOS.\n\nTexto original completo:\n{texto_bruto}"
+            try:
+                payload = {"model": "llama3", "prompt": prompt, "stream": False, "options": {"temperature": 0.0}}
+                res = requests.post(self.config["ollama_url"], json=payload, timeout=900)
+                res.raise_for_status()
+                texto_final = re.sub(r'[*_~`]', '', res.json()["response"].strip())
+                msg_log = f"✅ Traducción Íntegra a {target_lang} exitosa."
+            except Exception as ia_e:
+                texto_final = f"⚠️ [Fallo IA. Mostrando texto original]\n\n{texto_bruto}"; msg_log = f"⚠️ Fallo en Broadcasting IA. {ia_e}"
+            self.root.after(0, lambda: [self.txt_input.delete("1.0", tk.END), self.txt_input.insert("1.0", texto_final), self.log(msg_log)])
+            try: os.remove(temp_audio)
+            except: pass
+        except Exception as e: self.root.after(0, lambda: [self.txt_input.delete("1.0", tk.END), self.txt_input.insert("1.0", f"❌ Error en la importación: {e}"), self.log(f"❌ Error en Ingesta a Guion: {e}")])
+        finally: self.root.after(0, lambda: [self.btn_video_guion.configure(state="normal"), self.btn_procesar.configure(state="normal"), self.detener_ping(self.led_ia, "#4ade80", "ping_active_ia")])
+
+    def insertar_comando_audio(self):
+        if self.indice_media_seleccionado < 0: return messagebox.showinfo("Aviso", "Selecciona archivo en la galería.")
+        idx = self.indice_media_seleccionado
+        self.txt_guion.insert(tk.INSERT, f" [VIDEO_AUDIO_{idx}:Entrevista_Directa] ")
+        self.refrescar_galeria()
+        self.log(f"✅ Etiqueta de Entrevista {idx} inyectada.")
+
+    def _auto_generar_titular(self, texto):
+        if not texto or not texto.strip() or len(texto.strip()) < 10: return
+        def run():
+            try:
+                target_lang = self.idioma_salida_guion.get()
+                prompt_ia = f"""Actúa como procesador automatizado. TRADUCE AL {target_lang}. \nREGLAS:\n1. ELIMINA saludos.\n2. Escribe números con letras.\n3. RESPETA ESTRICTAMENTE LA CONCORDANCIA GRAMATICAL DE GÉNERO Y NÚMERO.\n4. Usa EXACTAMENTE ||| entre bloques.\n\nEstructura:\nTitular TV (máx 14 palabras)\n|||\nTitular redes vertical (máx 5 palabras)\n|||\n[Texto limpio]\n\nTexto: {texto}"""
+                payload = {"model": "llama3.2:3b", "prompt": prompt_ia, "stream": False, "options": {"temperature": 0.0}}
+                res = requests.post(self.config["ollama_url"], json=payload, timeout=900)
+                res.raise_for_status()
+                texto_crudo = res.json()["response"].strip(); partes = texto_crudo.split("|||")
+                t_169 = partes[0].strip() if len(partes) > 0 else texto_crudo.replace('\n', ' ')[:100]
+                t_916 = partes[1].strip() if len(partes) > 1 else ""
+                basura = ["Titular-tv", "Titular TV", "Titular redes vertical", "Titulares:", "Titular:", "tv", "redes", "vertical", "-", "\\[16:9\\]", "\\[9:16\\]"]
+                for b in basura: t_169 = re.compile(b, re.IGNORECASE).sub('', t_169); t_916 = re.compile(b, re.IGNORECASE).sub('', t_916)
+                t_169 = re.sub(r'[^\w\s\.,¿?¡!]', '', t_169).strip().upper()
+                t_916 = re.sub(r'[^\w\s\.,¿?¡!]', '', t_916).strip().upper()
+                self.root.after(0, lambda: [self.ent_titular_169.delete(0, tk.END), self.ent_titular_169.insert(0, t_169), self.ent_titular_916.delete(0, tk.END), self.ent_titular_916.insert(0, t_916), self._check_title_length(), self.log(f"✨ Titular generado ({target_lang})."), self.actualizar_monitor_estatico()])
+            except: pass
+        threading.Thread(target=run, daemon=True).start()
+
+    def _check_title_length(self, event=None):
+        if len(self.ent_titular_169.get()) > 150: self.ent_titular_169.configure(border_color=self.config["accent_red"])
+        else: self.ent_titular_169.configure(border_color="#333")
+        if len(self.ent_titular_916.get()) > 150: self.ent_titular_916.configure(border_color=self.config["accent_red"])
+        else: self.ent_titular_916.configure(border_color="#333")
+        self.actualizar_monitor_estatico()
+
+    def start_render_thread(self):
+        self.detener_musica_player() 
+        titular_raw = self.ent_titular_169.get() if self.formato_video.get() == "16:9" else self.ent_titular_916.get()
+        locucion_raw = self.txt_guion.get("1.0", tk.END)
+        titular = re.sub(r'[\r\n\t]+', ' ', titular_raw).strip(); locucion_texto = re.sub(r'[\r\n\t]+', ' ', locucion_raw).strip()
+        incluye_txt = bool(self.incluir_textos.get())
+        incluye_logo = bool(self.incluir_logo.get())
+        fuente_voz_val = str(self.fuente_voz.get())
+        
+        hay_voz = False
+        if fuente_voz_val == "IA" and locucion_texto: hay_voz = True
+        if fuente_voz_val == "MIC" and os.path.exists(self.ruta_voz_personal): hay_voz = True
+        
+        hay_logos = False
+        for pos in ["TL", "TR", "BL", "BR"]:
+            sel = self.logo_selecciones[pos].get(); pth = self.config.get("lista_logos", {}).get(sel, "")
+            if pth and os.path.exists(pth): hay_logos = True; break
+
+        ruta_fondo_actual = self.config.get("lista_fondos", {}).get(self.fondo_seleccionado.get(), "")
+
+        if not (self.lista_media_obj or ruta_fondo_actual or self.ruta_cortina_musical or hay_voz or (incluye_txt and titular) or (incluye_logo and hay_logos)):
+            self.log("❌ ERROR: Proyecto vacío. Añade contenido para renderizar.")
+            messagebox.showerror("Error", "Proyecto vacío. Añade contenido para renderizar.")
+            return
+
+        self.lock_ui(True); self.progress.start(); self.iniciar_ping(self.led_render, "#333333", "#ff4444", "ping_active_render")
+        threading.Thread(target=self.ejecutar_ffmpeg_nativo, args=(titular, hay_logos, ruta_fondo_actual, locucion_texto, fuente_voz_val, incluye_txt, incluye_logo), daemon=True).start()
+
+    def ejecutar_ffmpeg_nativo(self, titular, hay_logos, ruta_fondo_actual, locucion_texto, fuente_voz_val, incluye_txt, incluye_logo):
+        t_lang = LANGUAGES.get(self.idioma_actual, LANGUAGES["Español"])
+        opt_100p = t_lang.get("opt_100p", "100% Pantalla")
+        opt_reduc = t_lang.get("opt_reduc", "Reducido Proporcional")
+
+        formato = str(self.formato_video.get()); is_vertical = (formato == "9:16") 
+        fps_val = int(self.config.get('fps', 30))
+        
+        color_sel = str(self.color_cintillo.get()); cintillo_bg = PALETA_COLORES.get(color_sel, {}).get("bg", "#003399"); cintillo_fg = PALETA_COLORES.get(color_sel, {}).get("fg", "white")
+        color_sub_sel = str(self.color_cintillo_sub.get()); cintillo_sub_bg = PALETA_COLORES.get(color_sub_sel, {}).get("bg", "#111111")
+
+        self.log(self.get_text("log_render_start"))
+        tmp_dir = os.path.join(folder_path, "temp_render_nle")
+        shutil.rmtree(tmp_dir, ignore_errors=True); os.makedirs(tmp_dir, exist_ok=True)
+        
+        partes_guion = []
+        if fuente_voz_val == "IA" and locucion_texto:
+            patron = r'\[VIDEO_AUDIO_(\d+)[^\]]*\]'
+            matches = list(re.finditer(patron, locucion_texto))
+            last_end = 0
+            for m in matches:
+                text_chunk = locucion_texto[last_end:m.start()].strip()
+                if text_chunk: partes_guion.append({"tipo": "tts", "texto": text_chunk})
+                idx_vid = int(m.group(1)); partes_guion.append({"tipo": "entrevista", "idx": idx_vid})
+                last_end = m.end()
+            text_chunk = locucion_texto[last_end:].strip()
+            if text_chunk: partes_guion.append({"tipo": "tts", "texto": text_chunk})
+        elif fuente_voz_val == "MIC" and os.path.exists(self.ruta_voz_procesada):
+            partes_guion.append({"tipo": "tts_mic", "path": self.ruta_voz_procesada})
+
+        if not partes_guion and not hay_voz: partes_guion.append({"tipo": "vacio"})
+
+        audio_chunks = []; video_chunks = []
+        srt_content = ""; srt_idx = 1
+        t_r = self.safefloat(self.voz_retraso, 0.0); current_time_srt = 0.0
+
+        entrevistas_indices = [p["idx"] for p in partes_guion if p.get("tipo") == "entrevista"]
+        broll_queue = [m for i, m in enumerate(self.lista_media_obj) if i not in entrevistas_indices]
+        broll_idx = 0; broll_used = 0.0
+
+        def get_broll_chunks(req_dur):
+            nonlocal broll_idx, broll_used
+            chunks = []; rem = req_dur; loop_guard = 0
+            while rem > 0 and broll_queue and loop_guard < 1000:
+                item = broll_queue[broll_idx % len(broll_queue)]
+                avail = item["duration"] - broll_used
+                if avail <= 0.1:
+                    broll_idx += 1; broll_used = 0.0; loop_guard += 1
+                    if loop_guard > len(broll_queue) * 2: break
+                    continue
+                loop_guard = 0; take = min(rem, avail)
+                chunks.append({"path": item["path"], "is_video": item.get("is_video", True), "t_in": item.get("t_in", 0.0) + broll_used, "dur": take, "color": item.get("color", {}), "v_on": item.get("v_on", True), "a_on": False, "width": item.get("width", 1920), "height": item.get("height", 1080), "is_vid_vertical": item.get("is_vid_vertical", False)})
+                rem -= take; broll_used += take
+                if broll_used >= item["duration"] - 0.1: broll_idx += 1; broll_used = 0.0
+            if rem > 0: chunks.append({"path": "black", "is_video": False, "dur": rem, "v_on": True, "a_on": False, "width": 1920, "height": 1080, "is_vid_vertical": False})
+            return chunks
+
+        ruta_modelo = os.path.join(folder_path, self.config.get("last_piper_voice", "es_ES-mls_10246-low.onnx"))
+        dur_total_voz = 0.0
+        
+        if t_r > 0:
+            for c in get_broll_chunks(t_r):
+                c['start'] = current_time_srt; c['end'] = current_time_srt + c['dur']
+                if c["v_on"]: video_chunks.append(c)
+                if c["a_on"] and c["path"] != "black": audio_chunks.append({"path": c["path"], "start": current_time_srt, "dur": c["dur"], "t_in": c["t_in"], "is_video": c["is_video"], "tipo_audio": "broll"})
+                current_time_srt += c['dur']
+            dur_total_voz += t_r
+
+        v_width, v_height = (1080, 1920) if is_vertical else (1920, 1080)
+        
+        if is_vertical:
+            if self.encuadre_916.get() == opt_100p: sw_out, sh_out, vx_off, y_pip = 1080, 1920, 0, 0
+            elif self.encuadre_916.get() == opt_reduc: sw_out, sh_out, vx_off, y_pip = 1080, int(1080 * 9/16), 0, (1920 - int(1080 * 9/16)) // 2
+            else: sw_out, sh_out, vx_off, y_pip = 940, int(940 * 16/9), (1080 - 940) // 2, (1920 - int(940 * 16/9)) // 2
+            cw = 900; cx = (1080 - cw) // 2
+            h1, h2, hs, margen = 160, 160, 180, 50
+            ys = 1920 - hs - margen; y2 = ys - h2; y1 = y2 - h1
+        else:
+            if self.encuadre_169.get() == opt_100p: sw_out, sh_out, vx_off, y_pip = 1920, 1080, 0, 0
+            else: sw_out, sh_out, vx_off, y_pip = int(1920 * 0.70), int(1080 * 0.70), (1920 - int(1920 * 0.70)) // 2, (1080 - int(1080 * 0.70)) // 2 - 50 
+            cw = 1400; cx = (1920 - cw) // 2
+            h1, h2, hs = 80, 80, 120
+            ys = 1080 - hs - 40; y2 = ys - h2; y1 = y2 - h1
+
+        try:
+            for p in partes_guion:
+                if p["tipo"] == "tts":
+                    t_path = os.path.join(tmp_dir, f"temp_tts_raw_{len(audio_chunks)}.wav")
+                    t_proc = os.path.join(tmp_dir, f"temp_tts_proc_{len(audio_chunks)}.wav")
+                    if os.path.exists(ruta_modelo): subprocess.run(['piper', '-m', ruta_modelo, '-f', t_path], input=p["texto"].encode('utf-8'), capture_output=True, creationflags=0x08000000 if os.name == 'nt' else 0)
+                    else: subprocess.run(['edge-tts', '--text', p["texto"], '--write-media', t_path], capture_output=True, creationflags=0x08000000 if os.name == 'nt' else 0)
+                    self.aplicar_dsp_voz(t_path, t_proc)
+                    dur = self.obtener_duracion_audio(t_proc)
+                    if dur <= 0: dur = 5.0
+                    audio_chunks.append({"path": t_proc, "start": current_time_srt, "dur": dur, "t_in": 0.0, "is_video": False, "tipo_audio": "voz"})
+                    for c in get_broll_chunks(dur):
+                        c['start'] = current_time_srt; c['end'] = current_time_srt + c['dur']
+                        if c["v_on"]: video_chunks.append(c)
+                        if c["a_on"] and c["path"] != "black": audio_chunks.append({"path": c["path"], "start": current_time_srt, "dur": c["dur"], "t_in": c["t_in"], "is_video": c["is_video"], "tipo_audio": "broll"})
+                        current_time_srt += c['dur']
+                    dur_total_voz += dur
+                    chunks_text = agrupar_subtitulos_dos_lineas(p["texto"], limite_caracteres=35 if is_vertical else 55)
+                    if chunks_text:
+                        time_per_chunk = dur / max(1, len(chunks_text))
+                        s_start = current_time_srt - dur
+                        for idx_c, c_text in enumerate(chunks_text):
+                            cs_start = s_start + idx_c * time_per_chunk
+                            cs_end = cs_start + time_per_chunk
+                            pos_x = cx + (cw // 2)
+                            pos_y = ys + (hs // 2)
+                            srt_content += f"Dialogue: 0,{format_ass_time(cs_start)},{format_ass_time(cs_end)},Default,,0,0,0,,{{\\an5\\pos({pos_x},{pos_y})}}{c_text}\n"
+                            srt_idx += 1
+                elif p["tipo"] == "entrevista":
+                    if 0 <= p["idx"] < len(self.lista_media_obj):
+                        e_item = self.lista_media_obj[p["idx"]]
+                        dur, tin, v_on, a_on, w_ent, h_ent, vert_ent = e_item["duration"], e_item.get("t_in", 0.0), e_item.get("v_on", True), e_item.get("a_on", True), e_item.get("width", 1920), e_item.get("height", 1080), e_item.get("is_vid_vertical", False)
+                        if v_on: video_chunks.append({"path": e_item["path"], "start": current_time_srt, "end": current_time_srt + dur, "dur": dur, "t_in": tin, "is_video": True, "original_path": e_item["path"], "color": e_item.get("color", {}), "width": w_ent, "height": h_ent, "is_vid_vertical": vert_ent})
+                        else: video_chunks.append({"path": "black", "start": current_time_srt, "end": current_time_srt + dur, "dur": dur, "t_in": 0.0, "is_video": False, "color": {}, "width": 1920, "height": 1080, "is_vid_vertical": False})
+                        if a_on and self.tiene_audio(e_item["path"]): audio_chunks.append({"path": e_item["path"], "start": current_time_srt, "dur": dur, "t_in": tin, "is_video": True, "tipo_audio": "entrevista"})
+                        if incluye_txt and self.subtitular_entrevistas.get() and p["idx"] in self.dict_textos_entrevistas:
+                            txt_sub = self.dict_textos_entrevistas[p["idx"]]
+                            if txt_sub:
+                                c_text_list = agrupar_subtitulos_dos_lineas(txt_sub, limite_caracteres=35 if is_vertical else 55)
+                                if c_text_list:
+                                    t_per_c = dur / max(1, len(c_text_list))
+                                    for idx_c, c_text in enumerate(c_text_list):
+                                        cs_start = current_time_srt + idx_c * t_per_c; cs_end = cs_start + t_per_c
+                                        srt_content += f"Dialogue: 0,{format_ass_time(cs_start)},{format_ass_time(cs_end)},Default,,0,0,0,,{{\\an5\\pos({cx + (cw // 2)},{ys + (hs // 2)})}}{c_text}\n"
+                        current_time_srt += dur; dur_total_voz += dur
+                elif p["tipo"] == "tts_mic":
+                    dur = self.obtener_duracion_audio(p["path"])
+                    if dur <= 0: dur = 5.0
+                    audio_chunks.append({"path": p["path"], "start": current_time_srt, "dur": dur, "t_in": 0.0, "is_video": False, "tipo_audio": "voz"})
+                    for c in get_broll_chunks(dur):
+                        c['start'] = current_time_srt; c['end'] = current_time_srt + c['dur']
+                        if c["v_on"]: video_chunks.append(c)
+                        if c["a_on"] and c["path"] != "black": audio_chunks.append({"path": c["path"], "start": current_time_srt, "dur": c["dur"], "t_in": c["t_in"], "is_video": c["is_video"], "tipo_audio": "broll"})
+                        current_time_srt += c['dur']
+                    dur_total_voz += dur
+                elif p["tipo"] == "vacio":
+                    dur = 5.0
+                    for c in get_broll_chunks(dur):
+                        c['start'] = current_time_srt; c['end'] = current_time_srt + c['dur']
+                        if c["v_on"]: video_chunks.append(c)
+                        if c["a_on"] and c["path"] != "black": audio_chunks.append({"path": c["path"], "start": current_time_srt, "dur": c["dur"], "t_in": c["t_in"], "is_video": c["is_video"], "tipo_audio": "broll"})
+                        current_time_srt += c['dur']
+                    dur_total_voz += dur
+
+            d_cola = self.safefloat(self.duracion_cola_mus, 6.0)
+            if d_cola > 0:
+                for c in get_broll_chunks(d_cola):
+                    c['start'] = current_time_srt; c['end'] = current_time_srt + c['dur']
+                    if c["v_on"]: video_chunks.append(c)
+                    if c["a_on"] and c["path"] != "black": audio_chunks.append({"path": c["path"], "start": current_time_srt, "dur": c["dur"], "t_in": c["t_in"], "is_video": c["is_video"], "tipo_audio": "broll"})
+                    current_time_srt += c['dur']
+                dur_total_voz += d_cola
+
+            srt_file_path = "temp_subs.ass"
+            fs_ass = 45 if is_vertical else 40
+            ass_header = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {v_width}
+PlayResY: {v_height}
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,{fs_ass},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,1,1,0,2,10,10,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
+            with open(os.path.join(tmp_dir, srt_file_path), "w", encoding="utf-8") as f: f.write(ass_header + srt_content)
+
+            fnt_local = "fuente.ttf"
+            font_orig = self.config.get('font_path', 'C:/Windows/Fonts/arialbd.ttf')
+            if os.path.exists(font_orig): shutil.copy(font_orig, os.path.join(tmp_dir, fnt_local))
+            else: fnt_local = "Arial"
+
+            mus_in = self.safefloat(self.mus_inicio, 0.0)
+            s_climax = self.safefloat(self.mus_salto_climax, 0.0)
+            f_climax = self.safefloat(self.mus_fin_climax, 40.0)
+            
+            dur_total_s = current_time_srt
+            cfg_out = os.path.abspath(self.config.get("output_final", "produccion_final_asvideo"))
+            os.makedirs(cfg_out, exist_ok=True)
+            
+            titular_str = str(titular).strip()
+            if not titular_str: titular_str = "Video_Final"
+            safe_name = re.sub(r'[\\/*?:"<>|]', "", titular_str[:40]).replace(" ", "_")
+            ts_str = datetime.now().strftime('%H%M%S')
+            output_video = os.path.join(cfg_out, f"emision_{safe_name}_{ts_str}.mp4")
+
+            i_args = []; f_args = []; input_idx = 0
+
+            i_args.extend(['-f', 'lavfi', '-t', str(dur_total_s + 5.0), '-i', f"color=c=#050505:s={v_width}x{v_height}"])
+            f_args.append(f"[{input_idx}:v]setsar=1/1[base_layer]")
+            input_idx += 1
+
+            if ruta_fondo_actual and os.path.exists(ruta_fondo_actual):
+                if ruta_fondo_actual.lower().endswith(('.mp4', '.mov')): i_args.extend(['-stream_loop', '-1', '-t', str(dur_total_s + 5.0), '-i', ruta_fondo_actual])
+                else: i_args.extend(['-loop', '1', '-framerate', str(fps_val), '-t', str(dur_total_s + 5.0), '-i', ruta_fondo_actual])
+                f_args.append(f"[{input_idx}:v]scale={v_width}:{v_height}:force_original_aspect_ratio=increase,crop={v_width}:{v_height},setsar=1/1[bg_video]")
+                f_args.append(f"[base_layer][bg_video]overlay=shortest=1[bg_layer]")
+                input_idx += 1
+            else:
+                f_args.append(f"[base_layer]copy[bg_layer]")
+
+            last_out_v = "bg_layer"
+
+            for j, vc in enumerate(video_chunks):
+                if vc["path"] == "black": continue
+                is_img_ext = vc["path"].lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
+                if is_img_ext: i_args.extend(['-loop', '1', '-framerate', str(fps_val), '-t', str(vc["dur"]), '-i', vc["path"]])
+                else: i_args.extend(['-i', vc["path"]])
+                v_in = input_idx; input_idx += 1
+                check_path = vc.get("original_path", vc["path"]); w_p = vc.get("width", 1920); h_p = vc.get("height", 1080); is_vid_vertical = vc.get("is_vid_vertical", False)
+                if is_vertical and self.encuadre_916.get() == opt_reduc:
+                    fit_cmd = f"scale={sw_out}:{sh_out}:force_original_aspect_ratio=decrease,pad={sw_out}:{sh_out}:(ow-iw)/2:(oh-ih)/2:color=black@0"
+                elif is_vertical and is_vid_vertical:
+                    fit_cmd = f"scale={sw_out}:{sh_out}:force_original_aspect_ratio=decrease,pad={sw_out}:{sh_out}:(ow-iw)/2:(oh-ih)/2:color=black@0"
+                elif is_vertical and not is_vid_vertical:
+                    try:
+                        cap = cv2.VideoCapture(check_path); frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frames//2)); ret, frame = cap.read(); cap.release()
+                        crop_x = "(iw-ow)/2"
+                        if ret:
+                            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY); face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'); faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+                            if len(faces) > 0: fx, fy, fw, fh = faces[0]; cx_face = fx + fw//2; scale_f = sh_out / h_p; calc_x = int(cx_face * scale_f) - (sw_out // 2); crop_x = str(max(0, min(calc_x, int(w_p * scale_f) - sw_out)))
+                        fit_cmd = f"scale=-2:{sh_out},crop={sw_out}:{sh_out}:{crop_x}:0"
+                    except: fit_cmd = f"scale={sw_out}:-1,crop={sw_out}:{sh_out}:(iw-{sw_out})/2:0"
+                else: 
+                    if not is_vid_vertical and (w_p/h_p) < (sw_out/sh_out): fit_cmd = f"scale={sw_out}:-1,crop={sw_out}:{sh_out}:0:0"
+                    else: fit_cmd = f"scale={sw_out}:{sh_out}:force_original_aspect_ratio=increase,crop={sw_out}:{sh_out}:(iw-ow)/2:0"
+
+                c = vc.get("color", {})
+                v_b, v_c, v_s, v_sh = float(c.get('b', 0.0)), float(c.get('c', 1.0)), float(c.get('s', 1.0)), float(c.get('sh', 0.0)) / 5.0
+                c_flt = f"eq=brightness={v_b}:contrast={v_c}:saturation={v_s},unsharp=5:5:{v_sh}:5:5:0.0"
+                t_in_val, dur_val = vc.get("t_in", 0.0), vc["dur"]
+                if is_img_ext: v_cmd = f"[{v_in}:v]setpts=PTS-STARTPTS+{vc['start']:.3f}/TB,format=rgba,{fit_cmd},{c_flt},setsar=1/1,fps={fps_val}[vproc{j}]"
+                else: v_cmd = f"[{v_in}:v]trim=start={t_in_val}:duration={dur_val},setpts=PTS-STARTPTS+{vc['start']:.3f}/TB,format=rgba,{fit_cmd},{c_flt},setsar=1/1,fps={fps_val}[vproc{j}]"
+                f_args.append(v_cmd)
+                f_args.append(f"[{last_out_v}][vproc{j}]overlay=x={vx_off}:y={y_pip}:enable='between(t,{vc['start']:.3f},{vc['end']:.3f})':eof_action=pass[ovl{j}]")
+                last_out_v = f"ovl{j}"
+
+            if incluye_txt and titular_str:
+                f_args.append(f"[{last_out_v}]drawbox=x={cx}:y={y1}:w={cw}:h={h1}:color={cintillo_bg}:t=fill,drawbox=x={cx}:y={y2}:w={cw}:h={h2}:color=black@0.8:t=fill,drawbox=x={cx}:y={ys}:w={cw}:h={hs}:color={cintillo_sub_bg}@0.85:t=fill[v_cajas]")
+                txt_limpio = str(titular_str).strip()
+                basura = ["Titular-tv", "Titular TV", "Titular redes", "Titulares:", "Titular:", "Titulares", "Titular", "tv", "redes", "-", "\\[16:9\\]", "\\[9:16\\]", "\\[", "\\]"]
+                for b in basura: txt_limpio = re.compile(b, re.IGNORECASE).sub('', txt_limpio)
+                txt_limpio = re.sub(r'[^\w\s\.,¿?¡!]', '', txt_limpio).strip()
+                txt_limpio = re.sub(r'[\'\"%,]', '', txt_limpio)
+                t1, t2 = self.wrap_title_balanced(txt_limpio)
+                fs_t = 60 if is_vertical else 50
+                f_args.append(f"[v_cajas]drawtext=text='{t1}':fontfile='{fnt_local}':x={cx}+({cw}-text_w)/2:y={y1}+({h1}-text_h)/2:fontsize={fs_t}:fontcolor={cintillo_fg}[v_t1]")
+                f_args.append(f"[v_t1]drawtext=text='{t2}':fontfile='{fnt_local}':x={cx}+({cw}-text_w)/2:y={y2}+({h2}-text_h)/2:fontsize={fs_t}:fontcolor=white[v_tit]")
+                last_out_v = "v_tit"
+
+            if incluye_txt and srt_content:
+                f_args.append(f"[{last_out_v}]subtitles='{srt_file_path}'[v_subs]")
+                last_out_v = "v_subs"
+
+            if incluye_logo and hay_logos:
+                for pos in ["TL", "TR", "BL", "BR"]:
+                    sel_name = str(self.logo_selecciones[pos].get())
+                    if sel_name != "Ninguno" and self.config["lista_logos"].get(sel_name):
+                        l_path = self.config["lista_logos"][sel_name]
+                        if os.path.exists(l_path):
+                            i_args.extend(['-i', l_path]); l_idx = input_idx; input_idx += 1
+                            lw = 256 if is_vertical else 176
+                            rx, ry = float(self.logos[pos].get("rel_x", 0.05)), float(self.logos[pos].get("rel_y", 0.05))
+                            f_args.append(f"[{l_idx}:v]scale={lw}:-1,format=rgba[limg{pos}]")
+                            f_args.append(f"[{last_out_v}][limg{pos}]overlay=x=W*{rx}:y=H*{ry}[vlog{pos}]")
+                            last_out_v = f"vlog{pos}"
+
+            f_args.append(f"[{last_out_v}]drawbox=x={vx_off}:y={y_pip}:w={sw_out}:h={sh_out}:color=white:t=10[v_trazo]")
+            last_out_v = "v_trazo"
+
+            v_fi, v_fo = self.safefloat(self.vid_fadein, 1.0), self.safefloat(self.vid_fadeout, 1.0)
+            f_args.append(f"[{last_out_v}]fade=t=in:st=0:d={v_fi},fade=t=out:st={max(0.1, dur_total_s - v_fo)}:d={v_fo},scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p[final_v]")
+
+            amix = []
+            for j, ac in enumerate(audio_chunks):
+                if not self.tiene_audio(ac["path"]):
+                    i_args.extend(['-f', 'lavfi', '-t', str(ac["dur"]), '-i', 'anullsrc=r=44100:cl=stereo'])
+                    a_in = input_idx; input_idx += 1; delay_ms = int(ac["start"] * 1000)
+                    f_args.append(f"[{a_in}:a]aformat=sample_rates=44100:channel_layouts=stereo,adelay={delay_ms}|{delay_ms}[aproc{j}]")
+                    amix.append(f"[aproc{j}]")
+                else:
+                    i_args.extend(['-i', ac["path"]])
+                    a_in = input_idx; input_idx += 1
+                    t_in_val, dur_val, delay_ms, tipo = ac.get("t_in", 0.0), ac["dur"], int(ac["start"] * 1000), ac.get("tipo_audio", "broll")
+                    if tipo == "voz": f_args.append(f"[{a_in}:a]atrim=start={t_in_val}:duration={dur_val},asetpts=PTS-STARTPTS,loudnorm=I=-14:TP=-1.5:LRA=11,volume={self.vol_voz.get()},aformat=sample_rates=44100:channel_layouts=stereo,adelay={delay_ms}|{delay_ms}[aproc{j}]")
+                    elif tipo == "entrevista": f_args.append(f"[{a_in}:a]atrim=start={t_in_val}:duration={dur_val},asetpts=PTS-STARTPTS,loudnorm=I=-14:TP=-1.5:LRA=11,volume=1.0,aformat=sample_rates=44100:channel_layouts=stereo,adelay={delay_ms}|{delay_ms}[aproc{j}]")
+                    else: f_args.append(f"[{a_in}:a]atrim=start={t_in_val}:duration={dur_val},asetpts=PTS-STARTPTS,volume=0.05,aformat=sample_rates=44100:channel_layouts=stereo,adelay={delay_ms}|{delay_ms}[aproc{j}]")
+                    amix.append(f"[aproc{j}]")
+
+            if self.ruta_cortina_musical and os.path.exists(self.ruta_cortina_musical):
+                ic = input_idx
+                m_in, s_climax, f_s = self.safefloat(self.mus_inicio, 0.0), self.safefloat(self.mus_salto_climax, 0.0), 2.0 
+                v_i, v_f, v_c, t_fd = float(self.vol_mus_intro.get()), float(self.vol_mus_fondo.get()), float(self.vol_mus_cola.get()), self.safefloat(self.voz_retraso, 2.0)
+                t_cama_muere = max(0.0, dur_total_s - d_cola); del_c = int(t_cama_muere * 1000)
+
+                i_args.extend(['-stream_loop', '-1', '-i', self.ruta_cortina_musical]); input_idx += 1
+                ix = input_idx
+                i_args.extend(['-stream_loop', '-1', '-i', self.ruta_cortina_musical]); input_idx += 1
+                
+                f_args.append(f"[{ic}:a]atrim=start={m_in}:duration={t_cama_muere},asetpts=PTS-STARTPTS,volume='{v_i}-({v_i}-{v_f})*clip((t-{t_fd})/1.5,0,1)-{v_f}*clip((t-({t_cama_muere}-1.0))/1.0,0,1)':eval=frame,apad[a_cama]")
+                
+                if self.usar_climax_musica.get(): f_args.append(f"[{ix}:a]atrim=start={s_climax}:duration={d_cola},asetpts=PTS-STARTPTS,volume='{v_c}*clip(t/{f_s},0,1)':eval=frame,adelay={del_c}|{del_c},apad[a_climax]")
+                else: f_args.append(f"[{ix}:a]atrim=start={m_in + t_cama_muere}:duration={d_cola},asetpts=PTS-STARTPTS,volume='{v_c}*clip(t/{f_s},0,1)':eval=frame,adelay={del_c}|{del_c},apad[a_climax]")
+                
+                amix.append('[a_cama]'); amix.append('[a_climax]')
+                
+            if len(amix) > 1: f_args.append(f"{''.join(amix)}amix=inputs={len(amix)}:duration=longest:dropout_transition=0,volume={float(len(amix))}[amix_out]")
+            elif len(amix) == 1: f_args.append(f"{amix[0]}acopy[amix_out]")
+            else:
+                i_args.extend(['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo'])
+                f_args.append(f"[{input_idx}:a]anull[amix_out]"); input_idx += 1
+            
+            a_fi, a_fo = self.safefloat(self.aud_fadein, 1.0), self.safefloat(self.aud_fadeout, 4.0)
+            f_args.append(f"[amix_out]afade=t=in:st=0:d={a_fi},afade=t=out:st={max(0.1, dur_total_s - a_fo)}:d={a_fo}[final_a]")
+
+            fs_master_path = os.path.abspath(os.path.join(tmp_dir, "fs_master.txt"))
+            with open(fs_master_path, "w", encoding="utf-8") as f: f.write(";".join(f_args))
+
+            cmd = ['ffmpeg', '-y'] + i_args + ['-filter_complex_script', fs_master_path, '-map', '[final_v]', '-map', '[final_a]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-c:a', 'aac', '-b:a', '192k', '-t', str(dur_total_s), output_video]
+            res = subprocess.run(cmd, cwd=tmp_dir, capture_output=True, text=True, creationflags=0x08000000 if os.name == 'nt' else 0)
+            
+            if res.returncode == 0:
+                self.log(f"{self.get_text('log_render_ok')} {os.path.basename(output_video)}")
+                def mostrar_modal_exito():
+                    dlg = ctk.CTkToplevel(self.root)
+                    dlg.title("ASvideo - Sistema"); dlg.geometry("400x180"); dlg.transient(self.root); dlg.grab_set(); dlg.configure(fg_color=self.config["bg_panel"])
+                    ctk.CTkLabel(dlg, text="🎬", font=("Segoe UI", 36)).pack(pady=(20, 5))
+                    ctk.CTkLabel(dlg, text="PRODUCCIÓN MAESTRA COMPLETADA", font=("Segoe UI", 14, "bold"), text_color="#4ade80").pack(pady=(0, 15))
+                    f_btn = ctk.CTkFrame(dlg, fg_color="transparent"); f_btn.pack()
+                    def abrir_y_cerrar(): os.startfile(cfg_out); dlg.destroy()
+                    ctk.CTkButton(f_btn, text="Abrir Carpeta", font=("Segoe UI", 12, "bold"), fg_color=self.config["accent_blue"], command=abrir_y_cerrar, width=120).pack(side="left", padx=10)
+                    ctk.CTkButton(f_btn, text="Cerrar", font=("Segoe UI", 12), fg_color="#333333", command=dlg.destroy, width=100).pack(side="left", padx=10)
+                self.root.after(0, mostrar_modal_exito)
+            else: 
+                err_msg = str(res.stderr)[-500:] if res.stderr else "Error desconocido o comando vacío."
+                self.log(f"❌ ERROR FFmpeg: {err_msg}")
+
+        except Exception as e:
+            self.log(f"❌ ERROR GENERAL EN RENDER: {e}")
+            traceback.print_exc()
+        finally:
+            self.root.after(0, self.progress.stop)
+            self.root.after(0, lambda: [self.detener_ping(self.led_render, "#333333", "ping_active_render"), self.lock_ui(False)])
+
+if __name__ == "__main__":
+    try: 
+        root = ctk.CTk()
+        root.after(0, lambda: root.state('zoomed')) 
+        app = AppASvideo(root)
+        root.mainloop()
+    except Exception as fatal_e:
+        error_trace = traceback.format_exc()
+        try: 
+            with open("ERROR_ASVIDEO_CRASH.txt", "w", encoding="utf-8") as f: f.write(error_trace)
+        except: pass
+        err_root = tk.Tk()
+        err_root.title("💥 ERROR CRÍTICO AL INICIAR")
+        err_root.geometry("1000x700")
+        err_root.configure(bg="#900C3F")
+        tk.Label(err_root, text="¡ASvideo ha fallado al iniciar! Falla en el código:", font=("Arial", 16, "bold"), bg="#900C3F", fg="white").pack(pady=10)
+        txt = tk.Text(err_root, font=("Consolas", 11), bg="#111", fg="#4ade80")
+        txt.pack(fill="both", expand=True, padx=20, pady=20)
+        txt.insert("1.0", error_trace)
+        err_root.mainloop()

@@ -1,0 +1,41 @@
+###############################################
+# CONFIGURACIÓN CANAL 9 TVA - RIBERALTA
+# EQUILIBRIO PROFESIONAL: LATENCIA VS ESTABILIDAD
+###############################################
+
+logLevel: info
+logDestinations: [stdout]
+readTimeout: 30s
+writeTimeout: 30s
+writeQueueSize: 512
+udpMaxPayloadSize: 1452
+
+###############################################
+# Servidor RTMP (Recibe la señal de vMix)
+rtmp: true
+rtmpAddress: :1936
+
+###############################################
+# Servidor HLS (Configuración Equilibrada para CANAL 9 TVA)
+hls: yes
+hlsAddress: :8080
+hlsAlwaysRemux: yes
+hlsVariant: mpegts
+hlsSegmentCount: 6         # Reducido de 15 a 6 (Colchón de ~12 segundos de seguridad)
+hlsSegmentDuration: 2s     # Mantenemos los 2 segundos por estabilidad de red
+hlsPartDuration: 1s
+hlsSegmentMaxSize: 50M
+hlsMuxerCloseAfter: 60s    # Mantiene la conexión abierta un minuto más
+
+###############################################
+# Otros protocolos (Desactivados)
+rtsp: false
+webrtc: false
+srt: false
+
+###############################################
+# Rutas de Transmisión
+paths:
+  live/tv:
+    source: publisher
+    overridePublisher: true
